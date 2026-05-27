@@ -12,14 +12,14 @@
 
 INSERT INTO categories (nombre, descripcion, icono) VALUES
 
--- 🖥️ Tecnología
+-- Tecnología
 ('Tecnología',        'Todo sobre software, hardware y tendencias tech',         'laptop'),
 ('Inteligencia Artificial', 'Machine learning, modelos de lenguaje y automatización', 'robot'),
 ('Programación',      'Lenguajes, frameworks y buenas prácticas de código',      'code'),
 ('Ciberseguridad',    'Seguridad informática, hacking ético y privacidad',       'shield'),
 ('Videojuegos',       'Gaming, desarrollo de juegos y cultura gamer',            'gamepad'),
 
--- 🎨 Arte y Cultura
+-- Arte y Cultura
 ('Arte Digital',      'Ilustración, diseño gráfico y arte generado por IA',     'palette'),
 ('Fotografía',        'Técnicas, equipos y edición fotográfica',                 'camera'),
 ('Música',            'Géneros musicales, producción y artistas',                'music'),
@@ -28,20 +28,20 @@ INSERT INTO categories (nombre, descripcion, icono) VALUES
 ('Animación',         'Anime, cartoons, motion graphics y stop motion',          'tv'),
 ('Moda',              'Tendencias, diseño de indumentaria y estilo personal',    'shirt'),
 
--- 🏃 Deportes y Bienestar
+-- Deportes y Bienestar
 ('Deportes',          'Fútbol, básquet, tenis y deportes en general',            'trophy'),
 ('Fitness',           'Entrenamiento, gimnasio, rutinas y nutrición deportiva',  'dumbbell'),
 ('Yoga y Meditación', 'Mindfulness, bienestar mental y práctica espiritual',    'heart'),
 ('Outdoor',           'Senderismo, escalada, camping y deportes al aire libre',  'mountain'),
 ('Fútbol',            'La pasión argentina: partidos, equipos y jugadores',      'soccer-ball'),
 
--- 🌍 Viajes y Gastronomía
+-- Viajes y Gastronomía
 ('Viajes',            'Destinos, tips de viaje y experiencias alrededor del mundo', 'plane'),
 ('Gastronomía',       'Recetas, restaurantes, cocina internacional y foodie',    'utensils'),
 ('Café y Barismo',    'Cultura del café, métodos de preparación y variedades',   'coffee'),
 ('Vinos y Bodegas',   'Enología, catas, regiones vitivinícolas y maridajes',    'wine-glass'),
 
--- 🔬 Ciencia y Educación
+-- Ciencia y Educación
 ('Ciencia',           'Física, química, biología y divulgación científica',      'flask'),
 ('Astronomía',        'Cosmos, telescopios, misiones espaciales y astrofísica',  'star'),
 ('Medio Ambiente',    'Ecología, cambio climático y sustentabilidad',            'leaf'),
@@ -49,13 +49,13 @@ INSERT INTO categories (nombre, descripcion, icono) VALUES
 ('Filosofía',         'Pensamiento crítico, ética y grandes preguntas',          'brain'),
 ('Educación',         'Pedagogía, recursos didácticos y aprendizaje continuo',  'graduation-cap'),
 
--- 💼 Negocios y Emprendimiento
+-- Negocios y Emprendimiento
 ('Emprendimiento',    'Startups, modelos de negocio e innovación',               'rocket'),
 ('Marketing Digital', 'SEO, redes sociales, contenido y publicidad online',     'megaphone'),
 ('Finanzas Personales','Ahorro, inversión, criptomonedas y educación financiera','dollar-sign'),
 ('Diseño UX/UI',      'Experiencia de usuario, interfaces y prototipado',        'layout'),
 
--- 🐾 Lifestyle y Hobbies
+-- Lifestyle y Hobbies
 ('Mascotas',          'Perros, gatos, cuidado animal y adopción responsable',   'paw'),
 ('Jardinería',        'Plantas de interior, huerta urbana y paisajismo',         'sprout'),
 ('DIY y Manualidades','Hazlo tú mismo, crafts, woodworking y upcycling',        'scissors'),
@@ -63,10 +63,8 @@ INSERT INTO categories (nombre, descripcion, icono) VALUES
 ('Astrología',        'Signos del zodíaco, cartas natales y horóscopo',         'moon');
 
 -- ============================================================
--- SECCIÓN 2: USUARIOS DE PRUEBA
--- Se usan para testear el algoritmo de recomendación.
--- Las contraseñas son hashes bcrypt de "password123"
--- NUNCA usar contraseñas reales en seeds.
+-- SECCIÓN 2: USUARIOS DE PRUEBA: Se usan para testear el algoritmo de recomendación.
+-- Las contraseñas son hashes bcrypt de "password123" 
 -- ============================================================
 
 INSERT INTO users (nombre, email, contrasena_hash, bio) VALUES
@@ -82,13 +80,9 @@ INSERT INTO users (nombre, email, contrasena_hash, bio) VALUES
 ('Tomás Acosta',     'tomas@example.com',   '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMaJobMEV.G3v8s5L4oBo6kS2i', 'Astrónomo aficionado, filosofo de cafetería y cinéfilo 🌌');
 
 -- ============================================================
--- SECCIÓN 3: INTERESES DE PRUEBA
--- Conecta usuarios con categorías usando la tabla intermedia.
--- nivel_interes: 1 (poco) a 5 (muy apasionado)
---
--- Los IDs de users y categories se asignan en orden de inserción:
--- user_id 1 = Lucía, 2 = Mateo, etc.
--- category_id 1 = Tecnología, 2 = IA, 3 = Programación, etc.
+-- SECCIÓN 3: INTERESES DE PRUEBA: Conecta usuarios con categorías usando la tabla intermedia.
+-- nivel_interes: 1 (poco) a 5 (muy apasionado) Los IDs de users y categories se asignan en orden de inserción:
+-- user_id 1 = Lucía, 2 = Mateo, etc. category_id 1 = Tecnología, 2 = IA, 3 = Programación, etc.
 -- ============================================================
 
 INSERT INTO user_interests (user_id, category_id, nivel_interes) VALUES
