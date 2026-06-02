@@ -1,4 +1,3 @@
-
 -- TRIGGER 1: AUDITORÍA DE CAMBIO DE EMAIL
 
 CREATE TABLE IF NOT EXISTS auditoria_emails (
@@ -9,6 +8,8 @@ CREATE TABLE IF NOT EXISTS auditoria_emails (
     fecha_cambio TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+-- índice para consultas por usuario
+CREATE INDEX IF NOT EXISTS idx_auditoria_emails_user_id ON auditoria_emails(user_id);
 CREATE OR REPLACE FUNCTION fn_auditar_cambio_email()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -39,6 +40,9 @@ BEGIN
         RAISE EXCEPTION 'Regla de negocio: user_id no puede ser NULL en photos.';
     END IF;
 
+    -- Evitar condiciones de carrera: bloquear la fila del usuario antes de contar
+    PERFORM 1 FROM users WHERE user_id = NEW.user_id FOR UPDATE;
+
     SELECT COUNT(*) INTO cantidad_actual
     FROM photos
     WHERE user_id = NEW.user_id;
@@ -57,3 +61,96 @@ CREATE TRIGGER trg_limite_fotos
 BEFORE INSERT ON photos
 FOR EACH ROW
 EXECUTE FUNCTION fn_limite_fotos_perfil();
+
+-- TRIGGER 3: FILTRO DE MODERACIÓN EN LA BIO
+
+CREATE OR REPLACE FUNCTION fn_moderar_bio()
+RETURNS TRIGGER AS $$
+BEGIN
+   
+    -- Usar límites de palabra robustos para evitar falsos positivos/negativos
+    IF NEW.bio ~* '(?<!\\w)(feo|fea|gord[oa]|flac[oa]|horrible|asqueros[oa])(?!\\w)' THEN
+        RAISE EXCEPTION 'Regla de comunidad: Tu descripción contiene lenguaje no permitido. Fomentamos un espacio ético y libre de prejuicios sobre los cuerpos.'
+        USING ERRCODE = 'P0001';
+    END IF;
+    
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Asegurar idempotencia: eliminar trigger previo si existe y (re)crear
+DROP TRIGGER IF EXISTS trg_moderar_bio ON users;
+CREATE TRIGGER trg_moderar_bio
+BEFORE INSERT OR UPDATE OF bio ON users
+FOR EACH ROW
+WHEN (NEW.bio IS NOT NULL)
+EXECUTE FUNCTION fn_moderar_bio();
+
+-- TRIGGER 4: CONTROL ANTI-SPAM DE INTERESES
+
+CREATE OR REPLACE FUNCTION fn_limite_intereses()
+RETURNS TRIGGER AS $$
+DECLARE
+    cant_intereses INT;
+BEGIN
+    
+    
+    PERFORM 1 FROM users WHERE user_id = NEW.user_id FOR UPDATE;
+
+    SELECT COUNT(*) INTO cant_intereses 
+    FROM user_interests 
+    WHERE user_id = NEW.user_id;
+
+    
+    IF cant_intereses >= 15 THEN
+        RAISE EXCEPTION 'Regla anti-spam: El usuario % no puede exceder el límite de 15 intereses.', NEW.user_id
+        USING ERRCODE = 'P0001';
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_limite_intereses ON user_interests;
+CREATE TRIGGER trg_limite_intereses
+BEFORE INSERT ON user_interests
+FOR EACH ROW
+EXECUTE FUNCTION fn_limite_intereses();
+
+-- TRIGGER 5: BLOQUEO DE ACCIONES PARA CUENTAS INACTIVAS
+
+
+CREATE OR REPLACE FUNCTION fn_bloquear_inactivos()
+RETURNS TRIGGER AS $$
+DECLARE
+    estado_activo BOOLEAN;
+BEGIN
+    
+    
+    SELECT activo INTO estado_activo 
+    FROM users 
+    WHERE user_id = NEW.user_id
+    FOR SHARE;
+
+    
+    IF estado_activo IS NOT TRUE THEN
+        RAISE EXCEPTION 'Seguridad: Operación denegada. La cuenta del usuario % se encuentra inactiva o no existe.', NEW.user_id
+        USING ERRCODE = 'P0001';
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+--  para proteger múltiples tablas
+DROP TRIGGER IF EXISTS trg_bloquear_fotos_inactivos ON photos;
+CREATE TRIGGER trg_bloquear_fotos_inactivos
+BEFORE INSERT ON photos
+FOR EACH ROW
+EXECUTE FUNCTION fn_bloquear_inactivos();
+
+DROP TRIGGER IF EXISTS trg_bloquear_intereses_inactivos ON user_interests;
+CREATE TRIGGER trg_bloquear_intereses_inactivos
+BEFORE INSERT ON user_interests
+FOR EACH ROW
+EXECUTE FUNCTION fn_bloquear_inactivos();
