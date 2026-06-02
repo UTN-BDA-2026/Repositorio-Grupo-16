@@ -1,59 +1,141 @@
-import os
-from neo4j import GraphDatabase
+from typing import List, Dict, Any, Optional
+from app.models.graph import ManejadorBaseDatosGrafo
+import logging
+
+logger = logging.getLogger(__name__)
 
 
-def get_neo4j_driver():
-    """Crear y retornar una instancia del controlador Neo4j."""
-    host = os.getenv("NEO4J_HOST", "localhost")
-    port = os.getenv("NEO4J_PORT", 7687)
-    user = os.getenv("NEO4J_USER", "neo4j")
-    password = os.getenv("NEO4J_PASSWORD")
-
-    uri = f"neo4j://{host}:{port}"
-    return GraphDatabase.driver(uri, auth=(user, password))
-
-
-def obtener_recomendaciones(user_id: int, limite: int = 5) -> list:
-    """
-    Obtiene recomendaciones personalizadas para un usuario desde Neo4j.
-    Consulta la base de datos de grafos para usuarios con intereses compartidos.
-    """
-    driver = get_neo4j_driver()
-
-    query = """
-    MATCH (u1:User {user_id: $user_id})-[:INTERESTED_IN]->(interest:Interest)
-    MATCH (u2:User)-[:INTERESTED_IN]->(interest)
-    WHERE u1 <> u2
-    WITH u2, COUNT(DISTINCT interest) AS shared_interests, 
-         COUNT(DISTINCT interest) * 1.0 / (
-            (SELECT COUNT(DISTINCT i) FROM (
-                MATCH (u1)-[:INTERESTED_IN]->(i) RETURN i
-            )) + (
-                SELECT COUNT(DISTINCT i) FROM (
-                    MATCH (u2)-[:INTERESTED_IN]->(i) RETURN i
-                ))
-        ) AS compatibilidad
-    ORDER BY compatibilidad DESC
-    LIMIT $limite
-    RETURN u2.user_id, u2.nombre, u2.email, compatibilidad, 
-           collect(DISTINCT interest.nombre) as intereses_compartidos
-    """
-
-    try:
-        with driver.session() as session:
-            result = session.run(query, user_id=user_id, limite=limite)
-            recomendaciones = []
-            for record in result:
-                recomendaciones.append({
-                    "user_id": record["u2.user_id"],
-                    "nombre": record["u2.nombre"],
-                    "email": record["u2.email"],
-                    "compatibilidad": record["compatibilidad"],
-                    "intereses_compartidos": record["intereses_compartidos"]
-                })
-            return recomendaciones
-    except Exception as e:
-        print(f"Error al obtener recomendaciones desde Neo4j: {e}")
-        return []
-    finally:
-        driver.close()
+class ServicioRecomendaciones:    
+    def __init__(self, manejador_grafo: ManejadorBaseDatosGrafo):
+        """
+         Se inicial el servicio de recomendaciones.
+        
+        Args:
+            manejador_grafo: Instancia de ManejadorBaseDatosGrafo
+        """
+        self.manejador_grafo = manejador_grafo
+    
+    def obtener_amigos_de_amigos(
+        self,
+        usuario_id: str,
+        limite: int = 10
+    ) -> List[Dict[str, Any]]:
+        consulta = """
+        MATCH (u:Usuario {id: $usuario_id})-[:AMIGO_DE]->(amigo:Usuario)
+        MATCH (amigo)-[:AMIGO_DE]->(amigo_de_amigo:Usuario)
+        WHERE amigo_de_amigo.id <> $usuario_id
+        AND NOT (u)-[:AMIGO_DE]->(amigo_de_amigo)
+        WITH amigo_de_amigo, COUNT(amigo) as amigos_mutuos
+        ORDER BY amigos_mutuos DESC
+        LIMIT $limite
+        RETURN amigo_de_amigo.id as usuario_id,
+               amigo_de_amigo.nombre_usuario as nombre_usuario,
+               amigo_de_amigo.email as email,
+               amigos_mutuos
+        """
+        
+        params = {
+            "usuario_id": usuario_id,
+            "limite": limite
+        }
+        
+        return self.manejador_grafo.ejecutar_consulta(consulta, params)
+    
+    def obtener_usuarios_intereses_comunes(
+        self,
+        usuario_id: str,
+        minimo_intereses_comunes: int = 1,
+        limite: int = 10
+    ) -> List[Dict[str, Any]]:
+        consulta = """
+        MATCH (u:Usuario {id: $usuario_id})-[:INTERESADO_EN]->(etiqueta:Etiqueta)
+        MATCH (otro:Usuario)-[:INTERESADO_EN]->(etiqueta)
+        WHERE otro.id <> $usuario_id
+        WITH otro, COLLECT(DISTINCT etiqueta.nombre) as etiquetas_compartidas, COUNT(DISTINCT etiqueta) as cantidad_comun
+        WHERE cantidad_comun >= $minimo_intereses_comunes
+        ORDER BY cantidad_comun DESC
+        LIMIT $limite
+        RETURN otro.id as usuario_id,
+               otro.nombre_usuario as nombre_usuario,
+               otro.email as email,
+               etiquetas_compartidas,
+               cantidad_comun
+        """
+        
+        params = {
+            "usuario_id": usuario_id,
+            "minimo_intereses_comunes": minimo_intereses_comunes,
+            "limite": limite
+        }
+        
+        return self.manejador_grafo.ejecutar_consulta(consulta, params)
+    
+    def obtener_etiquetas_recomendadas(
+        self,
+        usuario_id: str,
+        limite: int = 15
+    ) -> List[Dict[str, Any]]:
+        consulta = """
+        MATCH (u:Usuario {id: $usuario_id})-[:INTERESADO_EN]->(etiqueta:Etiqueta)
+        MATCH (u)-[:AMIGO_DE|INTERESADO_EN*2..3]-(usuario_similar:Usuario)-[:INTERESADO_EN]->(etiqueta_recomendada:Etiqueta)
+        WHERE NOT (u)-[:INTERESADO_EN]->(etiqueta_recomendada)
+        AND etiqueta_recomendada.nombre <> etiqueta.nombre
+        WITH etiqueta_recomendada, COUNT(DISTINCT usuario_similar) as popularidad
+        ORDER BY popularidad DESC
+        LIMIT $limite
+        RETURN etiqueta_recomendada.nombre as nombre_etiqueta,
+               popularidad
+        """
+        
+        params = {
+            "usuario_id": usuario_id,
+            "limite": limite
+        }
+        
+        return self.manejador_grafo.ejecutar_consulta(consulta, params)
+    
+    def obtener_recomendaciones_filtrado_colaborativo(
+        self,
+        usuario_id: str,
+        limite: int = 10
+    ) -> List[Dict[str, Any]]:
+        consulta = """
+        MATCH (u:Usuario {id: $usuario_id})-[:INTERESADO_EN]->(etiqueta_compartida:Etiqueta)
+        MATCH (usuario_similar:Usuario)-[:INTERESADO_EN]->(etiqueta_compartida)
+        WHERE usuario_similar.id <> $usuario_id
+        WITH u, usuario_similar, COUNT(DISTINCT etiqueta_compartida) as puntuacion_similitud
+        MATCH (usuario_similar)-[:INTERESADO_EN]->(etiqueta_recomendada:Etiqueta)
+        WHERE NOT (u)-[:INTERESADO_EN]->(etiqueta_recomendada)
+        WITH etiqueta_recomendada, SUM(puntuacion_similitud) as puntuacion_ponderada, COUNT(DISTINCT usuario_similar) as cantidad_recomendadores
+        ORDER BY puntuacion_ponderada DESC, cantidad_recomendadores DESC
+        LIMIT $limite
+        RETURN etiqueta_recomendada.nombre as nombre_etiqueta,
+               puntuacion_ponderada,
+               cantidad_recomendadores
+        """
+        
+        params = {
+            "usuario_id": usuario_id,
+            "limite": limite
+        }
+        
+        return self.manejador_grafo.ejecutar_consulta(consulta, params)
+    
+    def obtener_estadisticas_red(self, usuario_id: str) -> Dict[str, Any]:
+        consulta = """
+        MATCH (u:Usuario {id: $usuario_id})
+        WITH u
+        OPTIONAL MATCH (u)-[:AMIGO_DE]->(amigos:Usuario)
+        OPTIONAL MATCH (u)-[:INTERESADO_EN]->(etiquetas:Etiqueta)
+        OPTIONAL MATCH (u)-[:AMIGO_DE]->()-[:AMIGO_DE]->(extendido:Usuario)
+        WHERE extendido.id <> $usuario_id
+        RETURN COUNT(DISTINCT amigos) as cantidad_amigos,
+               COUNT(DISTINCT etiquetas) as cantidad_intereses,
+               COUNT(DISTINCT extendido) as alcance_red,
+               u.id as usuario_id
+        """
+        
+        params = {"usuario_id": usuario_id}
+        
+        resultado = self.manejador_grafo.ejecutar_consulta(consulta, params)
+        return resultado[0] if resultado else {}
