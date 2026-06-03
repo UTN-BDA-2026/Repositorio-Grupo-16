@@ -1,16 +1,27 @@
 import logging
 from contextlib import asynccontextmanager
+import os
+from dotenv import load_dotenv
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import get_settings
+from app.models.graph import ManejadorBaseDatosGrafo
+from app.services.recommendation import ServicioRecomendaciones
 
 settings = get_settings()
 
 logging.basicConfig(level=settings.log_level)
 logger = logging.getLogger(__name__)
 
+load_dotenv()
+manejador_grafo = ManejadorBaseDatosGrafo(
+    uri=os.getenv('NEO4J_URI'),
+    usuario=os.getenv('NEO4J_USERNAME'),
+    contraseña=os.getenv('NEO4J_PASSWORD')
+)
+servicio_recomendaciones = ServicioRecomendaciones(manejador_grafo)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
