@@ -476,10 +476,76 @@ async def obtener_recomendaciones(usuario_id: int, limite: int = 5):
         raise HTTPException(status_code=500, detail="Error al obtener recomendaciones")
 
 
+@app.post("/usuarios/{usuario_id}/etiquetas/bulk")
+async def agregar_multiples_etiquetas(
+    usuario_id: str,
+    etiquetas_request: dict
+):
+    
+    logger.info(f"AGREGAR ETIQUETAS (TRANSACCIÓN ACID): Usuario {usuario_id}")
+
+    try:
+        if "etiquetas" not in etiquetas_request or not etiquetas_request["etiquetas"]:
+            logger.warning("Solicitud sin etiquetas")
+            raise HTTPException(
+                status_code=400,
+                detail="La solicitud debe contener una lista 'etiquetas' no vacía"
+            )
+        
+        etiquetas = etiquetas_request["etiquetas"]
+        
+        for idx, etiqueta in enumerate(etiquetas):
+            if "nombre" not in etiqueta:
+                logger.error(f"Etiqueta {idx} sin campo 'nombre'")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Etiqueta {idx}: falta el campo obligatorio 'nombre'"
+                )
+        
+        logger.info(f"[1/3] Validación completada: {len(etiquetas)} etiquetas para procesar")
+        
+        from app.services.recommendation import ServicioRecomendaciones
+        
+        servicio = ServicioRecomendaciones(manejador_grafo)
+        logger.info(f"[2/3] ServicioRecomendaciones inicializado")
+        
+        logger.info(f"[3/3] Iniciando transacción ACID para agregar etiquetas...")
+        resultado = servicio.agregar_multiples_etiquetas_transaccional(
+            usuario_id=usuario_id,
+            etiquetas=etiquetas
+        )
+        
+        if not resultado['exitoso']:
+            logger.error(f"Error en transacción: {resultado['error']}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error en transacción ACID: {resultado['error']}"
+            )
+        
+        logger.info(f"Transacción exitosa: {resultado['etiquetas_creadas']} etiquetas agregadas")
+        logger.info(f"OPERACIÓN COMPLETADA CON ÉXITO")
+        
+        return {
+            "exitoso": True,
+            "usuario_id": usuario_id,
+            "etiquetas_agregadas": resultado['etiquetas_agregadas'],
+            "detalles": resultado['detalles']
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error inesperado: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al agregar etiquetas: {str(e)}"
+        )
+
+
 @app.exception_handler(Exception)
 async def manejador_excepciones_global(request, exc):
     """Manejador global de excepciones no capturadas."""
-    logger.error(f"✗ Excepción no manejada: {exc}", exc_info=True)
+    logger.error(f"Excepción no manejada: {exc}", exc_info=True)
     return HTTPException(status_code=500, detail="Error interno del servidor")
 
 
