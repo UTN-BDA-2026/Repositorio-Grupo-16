@@ -1,9 +1,8 @@
-version: '3.8'
-
 services:
   postgres:
     image: postgres:15-alpine
     container_name: nexus-postgres
+    restart: always
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -14,7 +13,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./db/postgres_init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -24,6 +23,7 @@ services:
   neo4j:
     image: neo4j:5-community
     container_name: nexus-neo4j
+    restart: always
     environment:
       NEO4J_AUTH: ${NEO4J_USER}/${NEO4J_PASSWORD}
       NEO4J_ACCEPT_LICENSE_AGREEMENT: "yes"
@@ -34,7 +34,11 @@ services:
       - neo4j_data:/var/lib/neo4j/data
       - ./db/neo4j_init:/var/lib/neo4j/import
     healthcheck:
-      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:7474 || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget --quiet --tries=1 --spider http://localhost:7474 || exit 1",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -46,6 +50,7 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: nexus-fastapi
+    restart: always
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -59,21 +64,74 @@ services:
       FASTAPI_HOST: ${FASTAPI_HOST}
       FASTAPI_PORT: ${FASTAPI_PORT}
       ENVIRONMENT: ${ENVIRONMENT}
-    ports:
-      - "${FASTAPI_PORT}:${FASTAPI_PORT}"
+    #ports:
+    #  - "${FASTAPI_PORT}:${FASTAPI_PORT}"
     depends_on:
       postgres:
         condition: service_healthy
       neo4j:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     networks:
       - nexus_network
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.fastapi.rule=Host(`localhost`)"
+      - "traefik.http.routers.fastapi.entrypoints=web"
+      - "traefik.http.services.fastapi.loadbalancer.server.port=8000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://localhost:8000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  traefik:
+    image: traefik:v2.10
+    container_name: nexus-traefik
+    restart: always
+    command:
+      - "--api.insecure=true" # Solo para desarrollo, cambiar en producción
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80" # Única entrada expuesta
+      - "8080:8080" # Dashboard de Traefik (solo desarrollo)
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - nexus_network
+    depends_on:
+      fastapi:
+        condition: service_healthy     
+
+  redis:
+    image: redis:7-alpine
+    container_name: nexus-redis
+    restart: always
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD}
+    ports:
+      - "${REDIS_PORT}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]  # ✅ Con contraseña
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - nexus_network
+    environment:
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
 
 # Volúmenes persistentes para las bases de datos
 volumes:
   postgres_data:
   neo4j_data:
+  redis_data:
 
 # Red interna para comunicación entre servicios
 networks:
