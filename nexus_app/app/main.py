@@ -1,5 +1,7 @@
 import logging
 import bcrypt
+import redis
+from redis.asyncio import Redis as AsyncRedis
 from contextlib import asynccontextmanager, contextmanager
 from typing import Generator
 
@@ -27,8 +29,10 @@ engine = create_engine(
     pool_size=settings.sqlalchemy_pool_size,
     max_overflow=settings.sqlalchemy_max_overflow,
     pool_timeout=settings.sqlalchemy_pool_timeout,
-    echo=settings.sqlalchemy_echo,  # Log de todas las sentencias SQL
-    echo_pool=True,  # Log de eventos del pool de conexiones
+    pool_recycle=3600,  # Reciclar conexiones cada hora
+    pool_pre_ping=True,  # Verificar conexión antes de usarla
+    echo=settings.sqlalchemy_echo,
+    echo_pool=True,
 )
 
 # Listener para auditoría de transacciones
@@ -84,6 +88,16 @@ manejador_grafo = ManejadorBaseDatosGrafo(
     contraseña=settings.neo4j_password
 )
 
+# ============ INICIALIZACIÓN DE REDIS ============
+
+# Cliente síncrono para operaciones básicas
+redis_client = redis.from_url(settings.redis_url, decode_responses=True)
+
+# Cliente asíncrono para FastAPI
+redis_async = AsyncRedis.from_url(settings.redis_url, decode_responses=True)
+
+logger.info("✓ Cliente Redis inicializado")
+
 # ============ DEPENDENCIAS DE INYECCIÓN ============
 
 def get_db() -> Generator[Session, None, None]:
@@ -108,6 +122,15 @@ def get_neo4j_session() -> Generator[Neo4jSession, None, None]:
         yield session
     finally:
         session.close()
+
+
+async def get_redis():
+    """Dependency para acceder a Redis en endpoints."""
+    redis = AsyncRedis.from_url(settings.redis_url, decode_responses=True)
+    try:
+        yield redis
+    finally:
+        await redis.close()
 
 
 # ============ CONTEXT MANAGER PARA TRANSACCIONES HÍBRIDAS ============
@@ -171,27 +194,17 @@ async def lifespan(app: FastAPI):
     Gestiona el ciclo de vida de la aplicación FastAPI.
     Maneja eventos de inicio y cierre.
     """
-    logger.info("🚀 Iniciando aplicación Nexus...")
-    logger.info(f"📍 Entorno: {settings.environment}")
-    logger.info(f"📍 PostgreSQL: {settings.postgres_host}:{settings.postgres_port}/{settings.postgres_db}")
-    logger.info(f"📍 Neo4j: {settings.neo4j_host}:{settings.neo4j_port}")
-    
+    # Startup
+    logger.info("🚀 Aplicación Nexus se está iniciando...")
+    logger.info(f"📊 Pool de conexiones: {settings.sqlalchemy_pool_size}")
+    logger.info(f"📍 Redis URL: {settings.redis_url}")
     yield
-    
-    logger.info("🛑 Cerrando aplicación Nexus...")
+    # Shutdown
+    logger.info("🛑 Cerrando conexiones...")
+    await redis_async.close()
     neo4j_driver.close()
-    logger.info("✓ Driver de Neo4j cerrado correctamente")
 
-
-# ============ INICIALIZACIÓN DE FASTAPI ============
-
-app = FastAPI(
-    title="API Nexus",
-    description="Plataforma de recomendaciones sociales que conecta personas por intereses. "
-                "Con transacciones híbridas ACID (PostgreSQL + Neo4j)",
-    version="1.0.0",
-    lifespan=lifespan,
-)
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

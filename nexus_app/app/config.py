@@ -39,6 +39,12 @@ class Settings(BaseSettings):
     fastapi_port: int = 8000
     fastapi_debug: bool = False
 
+    # ============ Configuración de Redis ============
+    redis_host: str = "localhost"
+    redis_port: int = 6379
+    redis_password: Optional[str] = None
+    redis_db: int = 0
+
     # ============ Entorno y Logging ============
     environment: str = "development"
     log_level: str = "DEBUG"
@@ -49,16 +55,28 @@ class Settings(BaseSettings):
         env_file_encoding = "utf-8"
         case_sensitive = False
 
+    def __init__(self, **data):
+        super().__init__(**data)
+        # Validaciones críticas
+        if not self.postgres_password:
+            raise ValueError("POSTGRES_PASSWORD es obligatorio en .env")
+        if not self.neo4j_password:
+            raise ValueError("NEO4J_PASSWORD es obligatorio en .env")
+
     @property
     def postgres_url_sqlalchemy(self) -> str:
         """
-        Construir cadena de conexión de PostgreSQL para SQLAlchemy.
-        Formato: postgresql+psycopg2://user:password@host:port/db
+        Construir cadena de conexión de PostgreSQL con parámetros de seguridad.
+        En producción, agregar: sslmode=require
         """
-        return (
+        base_url = (
             f"postgresql+psycopg2://{self.postgres_user}:{self.postgres_password}@"
             f"{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
+        # En ambiente real, agregar parámetros de seguridad
+        if self.environment == "production":
+            base_url += "?sslmode=require"
+        return base_url
 
     @property
     def neo4j_uri(self) -> str:
@@ -67,6 +85,13 @@ class Settings(BaseSettings):
         Formato: neo4j://host:port
         """
         return f"neo4j://{self.neo4j_host}:{self.neo4j_port}"
+
+    @property
+    def redis_url(self) -> str:
+        """Construir URL de Redis con autenticación."""
+        if self.redis_password:
+            return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/{self.redis_db}"
+        return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
 
     @staticmethod
     def configurar_logging():
