@@ -5,13 +5,13 @@ from passlib.context import CryptContext
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-
-
+from redis.asyncio import Redis as AsyncRedis
 from app.models.relational import UsuarioORM
 from app.config import get_settings
+from app.services.rate_limiter import RateLimiterLoginRedis
+import logging
 
-from app.main import get_db
-
+logger = logging.getLogger(__name__)
 settings = get_settings()
 
 #  Configuración Criptográfica de Seguridad para JWT
@@ -43,9 +43,87 @@ def crear_token_acceso(data: dict, expires_delta: Optional[timedelta] = None) ->
     return jwt.encode(to_encode, CLAVE_SECRETA, algorithm=ALGORITHM)
 
 
-#  Dependencia de Validación 
-# ---------------------------------------------------------------------------
-async def obtener_usuario_actual(token: str = Depends(esquema_oauth2), db: Session = Depends(get_db)) -> UsuarioORM:
+# ============ ENDPOINT DE LOGIN CON RATE LIMITER ============
+
+@router.post("/login")
+async def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(lambda: __import__('app.main', fromlist=['get_db']).get_db().__next__()),
+    redis: AsyncRedis = Depends(lambda: __import__('app.main', fromlist=['redis_async']).redis_async)
+):
+    
+    email = form_data.username
+    logger.info(f"Intento de login: {email}")
+    
+    rate_limiter = RateLimiterLoginRedis(redis)
+    
+    # PASO 1: Verificar si está bloqueado
+    if await rate_limiter.está_bloqueado(email):
+        tiempo_restante = await rate_limiter.obtener_tiempo_bloqueo_restante(email)
+        minutos = tiempo_restante // 60
+        segundos = tiempo_restante % 60
+        
+        logger.warning(f"login rechazado: {email} está bloqueado ({minutos}m {segundos}s)")
+        
+        raise HTTPException(
+            status_code=429,
+            detail=f"Cuenta bloqueada por intentos fallidos. Intente en {minutos}m {segundos}s."
+        )
+    
+    # PASO 2: Validar credenciales
+    usuario = db.query(UsuarioORM).filter(
+        UsuarioORM.email == email
+    ).first()
+    
+    if not usuario or not verificar_contrasena(form_data.password, usuario.contrasena_hash):
+        intentos, bloqueado = await rate_limiter.registrar_intento_fallido(email)
+        intentos_restantes = await rate_limiter.obtener_intentos_restantes(email)
+        
+        logger.warning(f"Credenciales incorrectas: {email} (intento {intentos}/{5})")
+        
+        if bloqueado:
+            raise HTTPException(
+                status_code=429,
+                detail="Demasiados intentos fallidos. Cuenta bloqueada por 15 minutos."
+            )
+        else:
+            raise HTTPException(
+                status_code=401,
+                detail=f"Email o contraseña incorrectos. Intentos restantes: {intentos_restantes}"
+            )
+    
+    # PASO 3: Verificar si cuenta está activa
+    if not usuario.activo:
+        logger.warning(f"Cuenta inactiva: {email}")
+        raise HTTPException(
+            status_code=403,
+            detail="Esta cuenta se encuentra temporalmente inactiva."
+        )
+    
+    # PASO 4: Login exitoso → limpiar intentos fallidos
+    await rate_limiter.registrar_intento_exitoso(email)
+    logger.info(f"Login exitoso: {email}")
+    
+    # PASO 5: Generar token JWT
+    expiracion_token = timedelta(minutes=MINUTOS_EXPIRACION_TOKEN)
+    datos_token = {"sub": usuario.email, "usuario_id": usuario.usuario_id}
+    access_token = crear_token_acceso(data=datos_token, expires_delta=expiracion_token)
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "usuario": {
+            "usuario_id": usuario.usuario_id,
+            "email": usuario.email,
+            "nombre_usuario": usuario.nombre_usuario,
+            "rol": "usuario"
+        }
+    }
+
+async def obtener_usuario_actual(
+    token: str = Depends(esquema_oauth2),
+    db: Session = Depends(lambda: __import__('app.main', fromlist=['get_db']).get_db().__next__())
+) -> UsuarioORM:
     """Intercepta la petición, valida el JWT y devuelve el usuario."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -59,58 +137,13 @@ async def obtener_usuario_actual(token: str = Depends(esquema_oauth2), db: Sessi
             raise credentials_exception
     except JWTError:
         raise credentials_exception
-        
-    user = db.query(UsuarioORM).filter(UsuarioORM.email == email, UsuarioORM.activo == True).first()
+    
+    user = db.query(UsuarioORM).filter(
+        UsuarioORM.email == email,
+        UsuarioORM.activo == True
+    ).first()
+    
     if user is None:
         raise credentials_exception
+    
     return user
-
-
-# Endpoint de Login 
-# ---------------------------------------------------------------------------
-@router.post("/login")
-async def login(
-    form_data: OAuth2PasswordRequestForm = Depends(), 
-    db: Session = Depends(get_db)
-):
-    """Recibe email y password, y emite el Token JWT si son correctos."""
-    user = db.query(UsuarioORM).filter(UsuarioORM.email == form_data.username).first()
-    
-    if not user or not verificar_contrasena(form_data.password, user.contrasena_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="El email o la contraseña son incorrectos.",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-        
-    if not user.activo:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Esta cuenta se encuentra temporalmente inactiva."
-        )
-
-    expiracion_token = timedelta(minutes=MINUTOS_EXPIRACION_TOKEN)
-    datos_token = {"sub": user.email, "usuario_id": user.usuario_id}
-    
-    access_token = crear_token_acceso(data=datos_token, expires_delta=expiracion_token)
-    
-    return {
-        "access_token": access_token, 
-        "token_type": "bearer",
-        "usuario": {
-            "id": user.usuario_id,
-            "nombre": user.nombre_usuario,
-            "email": user.email
-        }
-    }
-
-@router.get("/me")
-async def leer_usuario_actual(usuario: UsuarioORM = Depends(obtener_usuario_actual)):
-    """Devuelve los datos del usuario actual si el token es válido."""
-    return {
-        "usuario_id": usuario.usuario_id,
-        "nombre_usuario": usuario.nombre_usuario,
-        "email": usuario.email,
-        "activo": usuario.activo,
-        "fecha_creacion": usuario.fecha_creacion,
-    }
