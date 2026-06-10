@@ -139,3 +139,27 @@ class ServicioRecomendaciones:
         
         resultado = self.manejador_grafo.ejecutar_consulta(consulta, params)
         return resultado[0] if resultado else {}
+    
+    def agregar_multiples_etiquetas_transaccional(
+        self,
+        usuario_id: str,
+        etiquetas: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        logger.info(f"Iniciando operación transaccional: {len(etiquetas)} etiquetas para usuario {usuario_id}")
+        
+        resultado = self.manejador_grafo.crear_multiples_relaciones_etiquetas_transaccional(
+            usuario_id=usuario_id,
+            etiquetas=etiquetas
+        )
+        
+        if resultado['exitoso']:
+            logger.info(
+                f"Éxito: {resultado['etiquetas_creadas']} etiquetas agregadas "
+                f"para usuario {usuario_id}"
+            )
+        else:
+            logger.warning(
+                f"Fallo en transacción para usuario {usuario_id}: {resultado['error']}"
+            )
+        
+        return resultado

@@ -1,5 +1,5 @@
-from neo4j import GraphDatabase, Session, Driver
-from typing import Optional, List, Dict, Any, Generator
+from neo4j import GraphDatabase, Session, Driver, Transaction
+from typing import Optional, List, Dict, Any, Generator, Callable
 from contextlib import contextmanager
 import logging
 
@@ -34,6 +34,59 @@ class ManejadorBaseDatosGrafo:
             yield sesion
         finally:
             sesion.close()
+    
+    @contextmanager
+    def transaccion_explicita(self, timeout: Optional[int] = None) -> Generator[Transaction, None, None]:
+        sesion = self.driver.session()
+        try:
+            with sesion.begin_transaction() as txn:
+                yield txn
+            logger.info("Transacción completada exitosamente")
+        except Exception as e:
+            logger.error(f"Error en transacción: {e}. Se realiza rollback automático")
+            raise
+        finally:
+            sesion.close()
+    
+    def ejecutar_en_transaccion(
+        self, 
+        operaciones: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        resultados = []
+        try:
+            with self.transaccion_explicita() as txn:
+                for idx, operacion in enumerate(operaciones):
+                    consulta = operacion.get('consulta')
+                    parametros = operacion.get('parametros', {})
+                    
+                    if not consulta:
+                        raise ValueError(f"Operación {idx}: falta 'consulta'")
+                    
+                    resultado = txn.run(consulta, parametros)
+                    # Materializar los resultados dentro de la transacción
+                    datos = [registro.data() for registro in resultado]
+                    resultados.append({
+                        'operacion': idx,
+                        'datos': datos,
+                        'cantidad': len(datos)
+                    })
+                    logger.debug(f"Operación {idx} ejecutada: {len(datos)} registros")
+            
+            return {
+                'exitoso': True,
+                'resultados': resultados,
+                'cantidad_operaciones': len(operaciones),
+                'errores': None
+            }
+        except Exception as e:
+            mensaje_error = f"Fallo en transacción: {str(e)}"
+            logger.error(mensaje_error)
+            return {
+                'exitoso': False,
+                'resultados': [],
+                'cantidad_operaciones': len(operaciones),
+                'errores': mensaje_error
+            }
     
     def cerrar(self) -> None:
         self.driver.close()
@@ -119,3 +172,92 @@ class ManejadorBaseDatosGrafo:
         
         resultado = self.ejecutar_consulta(consulta, params)
         return bool(resultado)
+    
+    def crear_multiples_relaciones_etiquetas_transaccional(
+        self, 
+        usuario_id: str, 
+        etiquetas: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        if not etiquetas:
+            return {
+                'exitoso': False,
+                'usuario_id': usuario_id,
+                'etiquetas_creadas': 0,
+                'detalles': [],
+                'error': 'Lista de etiquetas vacía'
+            }
+        
+        operaciones = []
+        
+        operaciones.append({
+            'consulta': 'MATCH (u:Usuario {id: $usuario_id}) RETURN u',
+            'parametros': {'usuario_id': usuario_id}
+        })
+        
+        for idx, etiqueta in enumerate(etiquetas):
+            nombre = etiqueta.get('nombre')
+            fortaleza = etiqueta.get('fortaleza', 1.0)
+            categoria = etiqueta.get('categoria')
+            
+            if not nombre:
+                return {
+                    'exitoso': False,
+                    'usuario_id': usuario_id,
+                    'etiquetas_creadas': 0,
+                    'detalles': [],
+                    'error': f"Etiqueta {idx}: falta el campo 'nombre'"
+                }
+            
+            consulta_etiqueta = """
+            MATCH (u:Usuario {id: $usuario_id})
+            MERGE (t:Etiqueta {nombre: $nombre})
+            ON CREATE SET t.categoria = $categoria, t.fecha_creacion = datetime()
+            MERGE (u)-[r:INTERESADO_EN {fortaleza: $fortaleza}]->(t)
+            ON CREATE SET r.fecha_creacion = datetime()
+            RETURN t.nombre as nombre_etiqueta, r.fortaleza as fortaleza
+            """
+            
+            operaciones.append({
+                'consulta': consulta_etiqueta,
+                'parametros': {
+                    'usuario_id': usuario_id,
+                    'nombre': nombre,
+                    'categoria': categoria,
+                    'fortaleza': fortaleza
+                }
+            })
+        
+        resultado_transaccion = self.ejecutar_en_transaccion(operaciones)
+        
+        if not resultado_transaccion['exitoso']:
+            logger.error(f"Fallo al crear etiquetas para usuario {usuario_id}")
+            return {
+                'exitoso': False,
+                'usuario_id': usuario_id,
+                'etiquetas_creadas': 0,
+                'detalles': [],
+                'error': resultado_transaccion['errores']
+            }
+        
+        detalles = []
+        for idx, resultado in enumerate(resultado_transaccion['resultados'][1:]):
+            datos = resultado.get('datos', [])
+            if datos:
+                detalles.append({
+                    'etiqueta': etiquetas[idx]['nombre'],
+                    'fortaleza': datos[0].get('fortaleza'),
+                    'status': 'creada' if len(datos) > 0 else 'existe'
+                })
+        
+        logger.info(
+            f"Transacción exitosa: usuario {usuario_id} ahora tiene "
+            f"{len(detalles)} nuevas etiquetas de interés"
+        )
+        
+        return {
+            'exitoso': True,
+            'usuario_id': usuario_id,
+            'etiquetas_creadas': len(detalles),
+            'detalles': detalles,
+            'error': None
+        }
