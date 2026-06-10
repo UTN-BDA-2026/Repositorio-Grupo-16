@@ -235,3 +235,30 @@ EXPLAIN (ANALYZE, BUFFERS)
 SELECT * FROM logs_conexiones
 WHERE fecha_conexion BETWEEN '2023-06-01' AND '2023-08-31'
     AND tipo_evento = 'FALLIDA';
+
+    -- ============================================================
+-- TABLA: roles
+-- Define los niveles de acceso jerárquicos de la aplicación.
+-- ============================================================
+CREATE TABLE roles (
+    rol_id      SERIAL PRIMARY KEY,
+    nombre      VARCHAR(50) NOT NULL UNIQUE,  -- 'usuario', 'operador', 'administrador'
+    descripcion TEXT
+);
+
+
+INSERT INTO roles (nombre, descripcion) VALUES
+('usuario',        'Acceso básico: ver perfiles, subir fotos y agregar intereses'),
+('operador',       'Acceso intermedio: todo lo anterior más moderación de contenido'),
+('administrador',  'Acceso total: puede modificar datos de cualquier usuario');
+
+-- ============================================================
+-- MODIFICACIÓN: tabla users
+-- La columna rol_id con valor por defecto 'usuario'
+-- ============================================================
+ALTER TABLE users
+    ADD COLUMN rol_id INT NOT NULL DEFAULT 1
+        REFERENCES roles(rol_id) ON DELETE RESTRICT;
+-- ON DELETE RESTRICT: no permite borrar un rol que tenga usuarios asignados
+-- Índice para consultas por rol (ej: "traer todos los administradores")
+CREATE INDEX idx_users_rol ON users(rol_id);
