@@ -67,10 +67,18 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # ============ INICIALIZACIÓN DE NEO4J ============
 
+# Driver 1 (básico, sin mejoras)
 neo4j_driver = GraphDatabase.driver(
     settings.neo4j_uri,
     auth=(settings.neo4j_user, settings.neo4j_password),
     connection_timeout=settings.neo4j_connection_timeout,
+)
+
+# Driver 2 (mejorado, con pool, seguridad, context managers)
+manejador_grafo = ManejadorBaseDatosGrafo(
+    uri=settings.neo4j_uri,
+    usuario=settings.neo4j_user,
+    contraseña=settings.neo4j_password
 )
 
 # Verificar conexión a Neo4j
@@ -81,12 +89,6 @@ try:
 except Neo4jError as e:
     logger.error(f"✗ No se pudo conectar a Neo4j: {e}")
     raise
-
-manejador_grafo = ManejadorBaseDatosGrafo(
-    uri=settings.neo4j_uri,
-    usuario=settings.neo4j_user,
-    contraseña=settings.neo4j_password
-)
 
 # ============ INICIALIZACIÓN DE REDIS ============
 
@@ -113,24 +115,16 @@ def get_db() -> Generator[Session, None, None]:
 
 
 def get_neo4j_session() -> Generator[Neo4jSession, None, None]:
-    """
-    Dependencia para obtener sesión de Neo4j.
-    Maneja el ciclo de vida de la sesión.
-    """
-    session = neo4j_driver.session(database=settings.neo4j_database)
-    try:
-        yield session
-    finally:
-        session.close()
+    """Usar context manager del manejador mejorado"""
+    with manejador_grafo.obtener_sesion(database=settings.neo4j_database) as sesion:
+        yield sesion
 
+
+# ============ DEPENDENCIA: REDIS ASYNC ============
 
 async def get_redis():
     """Dependency para acceder a Redis en endpoints."""
-    redis = AsyncRedis.from_url(settings.redis_url, decode_responses=True)
-    try:
-        yield redis
-    finally:
-        await redis.close()
+    return redis_async
 
 
 # ============ CONTEXT MANAGER PARA TRANSACCIONES HÍBRIDAS ============
@@ -202,7 +196,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     logger.info(" Cerrando conexiones...")
     await redis_async.close()
-    neo4j_driver.close()
+    manejador_grafo.cerrar()  # ✅ Cerrar el manejador mejorado
 
 app = FastAPI(lifespan=lifespan)
 
