@@ -189,3 +189,81 @@ WHERE cols.table_schema = 'public'
     'user_interests', 'historial_actividad', 'logs_conexiones'
 )
 ORDER BY cols.table_name, cols.ordinal_position;
+
+-- ============================================================
+-- TABLA: roles
+-- Propósito: Define los niveles de acceso jerárquicos (RBAC).
+--            Cada usuario tiene asignado exactamente un rol.
+-- ============================================================
+
+COMMENT ON TABLE roles IS
+'Catálogo de roles del sistema (RBAC). Define los niveles de acceso jerárquicos: usuario, operador y administrador.';
+
+COMMENT ON COLUMN roles.rol_id IS
+'[PK] [SERIAL] Identificador único autoincremental del rol.';
+
+COMMENT ON COLUMN roles.nombre IS
+'[VARCHAR(50)] [NOT NULL] [UNIQUE] Nombre del rol. Valores posibles: usuario, operador, administrador.';
+
+COMMENT ON COLUMN roles.descripcion IS
+'[TEXT] [NULLABLE] Descripción de los permisos y responsabilidades asociados al rol.';
+
+
+-- ============================================================
+-- COLUMNA AGREGADA: users.rol_id
+-- Propósito: Vincula cada usuario con su nivel de acceso.
+-- ============================================================
+
+COMMENT ON COLUMN users.rol_id IS
+'[INT] [NOT NULL] [DEFAULT 1] [FK → roles.rol_id] Rol asignado al usuario. Por defecto se asigna rol usuario (rol_id = 1). ON DELETE RESTRICT: no se puede eliminar un rol que tenga usuarios asignados.';
+
+
+-- ============================================================
+-- TABLA: auditoria_admins
+-- Propósito: Registra automáticamente (via trigger) cada vez
+--            que un administrador modifica datos sensibles
+--            de otro usuario. Garantiza trazabilidad RBAC.
+--            Esta tabla nunca se escribe manualmente.
+-- ============================================================
+
+COMMENT ON TABLE auditoria_admins IS
+'Tabla de trazabilidad RBAC. Se llena automáticamente mediante el trigger trg_auditoria_admins cada vez que un administrador modifica datos de otro usuario.';
+
+COMMENT ON COLUMN auditoria_admins.auditoria_id IS
+'[PK] [SERIAL] Identificador único autoincremental del registro de auditoría.';
+
+COMMENT ON COLUMN auditoria_admins.fecha_hora IS
+'[TIMESTAMPTZ] [NOT NULL] [DEFAULT CURRENT_TIMESTAMP] Fecha y hora exacta en que ocurrió la modificación. Incluye zona horaria.';
+
+COMMENT ON COLUMN auditoria_admins.admin_user_id IS
+'[INT] [NOT NULL] ID del administrador que realizó el cambio. Referencia lógica a users.user_id.';
+
+COMMENT ON COLUMN auditoria_admins.usuario_id IS
+'[INT] [NOT NULL] ID del usuario cuyos datos fueron modificados. Referencia lógica a users.user_id.';
+
+COMMENT ON COLUMN auditoria_admins.campo_modificado IS
+'[VARCHAR(100)] [NULLABLE] Nombre de la columna que fue modificada (ej: email, bio, rol_id, activo).';
+
+COMMENT ON COLUMN auditoria_admins.valor_anterior IS
+'[TEXT] [NULLABLE] Valor que tenía el campo antes de la modificación.';
+
+COMMENT ON COLUMN auditoria_admins.valor_nuevo IS
+'[TEXT] [NULLABLE] Valor que quedó en el campo después de la modificación.';
+
+
+-- ============================================================
+-- VERIFICACIÓN
+-- ============================================================
+
+SELECT
+    cols.table_name                             AS tabla,
+    cols.column_name                            AS columna,
+    cols.data_type                              AS tipo,
+    pg_catalog.col_description(
+        (cols.table_schema || '.' || cols.table_name)::regclass::oid,
+        cols.ordinal_position
+    )                                           AS descripcion
+FROM information_schema.columns cols
+WHERE cols.table_schema = 'public'
+  AND cols.table_name IN ('roles', 'auditoria_admins', 'users')
+ORDER BY cols.table_name, cols.ordinal_position;
