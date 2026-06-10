@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     # ============ Entorno y Logging ============
     environment: str = "development"
     log_level: str = "DEBUG"
+    clave_secreta_jwt: str = "clave_secreta_nexus_para_desarrollo"
 
     class Config:
         """Configuración de ajustes de Pydantic."""

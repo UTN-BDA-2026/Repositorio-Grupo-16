@@ -195,12 +195,12 @@ async def lifespan(app: FastAPI):
     Maneja eventos de inicio y cierre.
     """
     # Startup
-    logger.info("🚀 Aplicación Nexus se está iniciando...")
-    logger.info(f"📊 Pool de conexiones: {settings.sqlalchemy_pool_size}")
-    logger.info(f"📍 Redis URL: {settings.redis_url}")
+    logger.info(" Aplicación Nexus se está iniciando...")
+    logger.info(f" Pool de conexiones: {settings.sqlalchemy_pool_size}")
+    logger.info(f" Redis URL: {settings.redis_url}")
     yield
     # Shutdown
-    logger.info("🛑 Cerrando conexiones...")
+    logger.info(" Cerrando conexiones...")
     await redis_async.close()
     neo4j_driver.close()
 
@@ -216,6 +216,9 @@ app.add_middleware(
 
 
 # ============ ENDPOINTS ============
+from app.auth import router as auth_router
+app.include_router(auth_router)
+
 
 @app.get("/")
 async def root():
@@ -246,7 +249,7 @@ async def registro_usuario_transaccion_hibrida(
     neo4j: Neo4jSession = Depends(get_neo4j_session)
 ):
     """
-    🔴 ENDPOINT CRÍTICO: Registro de usuario con transacción híbrida ACID.
+     ENDPOINT CRÍTICO: Registro de usuario con transacción híbrida ACID.
     
     Este endpoint demuestra el requisito académico crítico de transacciones distribuidas:
     1. Inserta usuario en PostgreSQL usando SQLAlchemy ORM
@@ -294,7 +297,7 @@ async def registro_usuario_transaccion_hibrida(
     """
     
     logger.info(f"╔═══════════════════════════════════════════════════════════════╗")
-    logger.info(f"║ 📝 SOLICITUD DE REGISTRO: {solicitud.email}")
+    logger.info(f"║  SOLICITUD DE REGISTRO: {solicitud.email}")
     logger.info(f"╚═══════════════════════════════════════════════════════════════╝")
     
     try:
