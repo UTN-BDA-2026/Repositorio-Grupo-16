@@ -67,7 +67,7 @@ EXECUTE FUNCTION fn_limite_fotos_perfil();
 CREATE OR REPLACE FUNCTION fn_moderar_bio()
 RETURNS TRIGGER AS $$
 BEGIN
-   
+
     -- Usar límites de palabra robustos para evitar falsos positivos/negativos
     IF NEW.bio ~* '(?<!\\w)(feo|fea|gord[oa]|flac[oa]|horrible|asqueros[oa])(?!\\w)' THEN
         RAISE EXCEPTION 'Regla de comunidad: Tu descripción contiene lenguaje no permitido. Fomentamos un espacio ético y libre de prejuicios sobre los cuerpos.'
@@ -154,3 +154,108 @@ CREATE TRIGGER trg_bloquear_intereses_inactivos
 BEFORE INSERT ON user_interests
 FOR EACH ROW
 EXECUTE FUNCTION fn_bloquear_inactivos();
+
+-- ============================================================
+--  Auditoría de acciones de Administradores (RBAC)
+--  Trazabilidad: registra cuando un admin modifica datos de otro usuario
+-- ============================================================
+-- TABLA: auditoria_admins
+-- Se llena automáticamente cuando un ADMINISTRADOR modifica
+-- datos sensibles de otro usuario (nombre, email, bio, rol, activo).
+-- Esta tabla nunca se edita manualmente.
+-- ============================================================
+CREATE TABLE IF NOT EXISTS auditoria_admins (
+    auditoria_id     SERIAL PRIMARY KEY,
+    fecha_hora       TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    admin_user_id    INT NOT NULL,        -- Quién hizo el cambio
+    usuario_id       INT NOT NULL,        -- A quién le modificaron los datos
+    campo_modificado VARCHAR(100),        -- Qué campo cambió (ej: 'email', 'rol_id')
+    valor_anterior   TEXT,               -- Cómo estaba antes
+    valor_nuevo      TEXT                -- Cómo quedó después
+);
+
+CREATE INDEX IF NOT EXISTS idx_auditoria_admins_admin   ON auditoria_admins(admin_user_id);
+CREATE INDEX IF NOT EXISTS idx_auditoria_admins_usuario ON auditoria_admins(usuario_id);
+
+
+-- ============================================================
+-- FUNCIÓN: fn_auditar_accion_admin
+-- Se ejecuta automáticamente al hacer UPDATE en users.
+-- Solo registra si quien modifica es un ADMINISTRADOR (rol_id = 3)
+-- y está tocando los datos de OTRO usuario (no los propios).
+--
+-- La app debe setear antes del UPDATE:
+--   SET LOCAL app.current_user_id = '<id_del_admin>';
+-- ============================================================
+CREATE OR REPLACE FUNCTION fn_auditar_accion_admin()
+RETURNS TRIGGER AS $$
+DECLARE
+    v_admin_id  INT;
+    v_rol_admin INT;
+BEGIN
+    -- Lee el ID del usuario que está haciendo el cambio desde la sesión.
+    -- Si no está seteado (ej: migraciones), usamos 0 y no auditamos.
+    BEGIN
+        v_admin_id := current_setting('app.current_user_id')::INT;
+    EXCEPTION WHEN OTHERS THEN
+        v_admin_id := 0;
+    END;
+
+    -- Solo audita si es un admin modificando a OTRO usuario
+    IF v_admin_id != 0 AND v_admin_id != NEW.user_id THEN
+
+        SELECT rol_id INTO v_rol_admin
+        FROM users WHERE user_id = v_admin_id;
+
+        -- rol_id = 3 → administrador (según tabla roles)
+        IF v_rol_admin = 3 THEN
+
+            IF OLD.nombre IS DISTINCT FROM NEW.nombre THEN
+                INSERT INTO auditoria_admins
+                    (admin_user_id, usuario_id, campo_modificado, valor_anterior, valor_nuevo)
+                VALUES (v_admin_id, NEW.user_id, 'nombre', OLD.nombre, NEW.nombre);
+            END IF;
+
+            IF OLD.email IS DISTINCT FROM NEW.email THEN
+                INSERT INTO auditoria_admins
+                    (admin_user_id, usuario_id, campo_modificado, valor_anterior, valor_nuevo)
+                VALUES (v_admin_id, NEW.user_id, 'email', OLD.email, NEW.email);
+            END IF;
+
+            IF OLD.bio IS DISTINCT FROM NEW.bio THEN
+                INSERT INTO auditoria_admins
+                    (admin_user_id, usuario_id, campo_modificado, valor_anterior, valor_nuevo)
+                VALUES (v_admin_id, NEW.user_id, 'bio', OLD.bio, NEW.bio);
+            END IF;
+
+            IF OLD.rol_id IS DISTINCT FROM NEW.rol_id THEN
+                INSERT INTO auditoria_admins
+                    (admin_user_id, usuario_id, campo_modificado, valor_anterior, valor_nuevo)
+                VALUES (v_admin_id, NEW.user_id, 'rol_id',
+                        OLD.rol_id::TEXT, NEW.rol_id::TEXT);
+            END IF;
+
+            IF OLD.activo IS DISTINCT FROM NEW.activo THEN
+                INSERT INTO auditoria_admins
+                    (admin_user_id, usuario_id, campo_modificado, valor_anterior, valor_nuevo)
+                VALUES (v_admin_id, NEW.user_id, 'activo',
+                        OLD.activo::TEXT, NEW.activo::TEXT);
+            END IF;
+
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ============================================================
+-- TRIGGER: trg_auditoria_admins
+-- Se dispara DESPUÉS de cada UPDATE en users.
+-- este registra SOLO los que hace un administrador sobre otro usuario.
+-- ============================================================
+DROP TRIGGER IF EXISTS trg_auditoria_admins ON users;
+CREATE TRIGGER trg_auditoria_admins
+    AFTER UPDATE ON users
+    FOR EACH ROW
+    EXECUTE FUNCTION fn_auditar_accion_admin();
