@@ -1,9 +1,12 @@
-import React, { useState } from 'react'
+import React, { useContext, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import api from '../API/axios'
+import { AuthContext } from '../context/AuthContext'
 import './Login.css'
 
 function Login() {
   const navigate = useNavigate()
+  const { login } = useContext(AuthContext)
 
   // Estado del formulario
   const [form, setForm] = useState({ email: '', password: '' })
@@ -37,23 +40,21 @@ function Login() {
 
     setLoading(true)
     try {
-      // ── TODO: reemplazar con el endpoint real de FastAPI ──────────
-      // const res  = await fetch('http://localhost:8000/auth/login', {
-      //   method: 'POST',
-      //   headers: { 'Content-Type': 'application/json' },
-      //   body: JSON.stringify({ email: form.email, password: form.password }),
-      // })
-      // const data = await res.json()
-      // if (!res.ok) throw new Error(data.detail || 'Error al iniciar sesión')
-      // localStorage.setItem('token', data.access_token)
-      // ─────────────────────────────────────────────────────────────
+      const res = await api.post('/login', new URLSearchParams({
+        username: form.email,
+        password: form.password,
+      }))
 
-      // Mock temporal: simulamos 1 segundo de red y redirigimos
-      await new Promise(r => setTimeout(r, 1000))
+      const data = res.data
+      if (!data.access_token || !data.usuario) {
+        throw new Error('Respuesta inválida del servidor')
+      }
+
+      login(data.access_token, data.usuario)
       navigate('/')
 
     } catch (err) {
-      setErrors({ general: err.message })
+      setErrors({ general: err.response?.data?.detail || err.message })
     } finally {
       setLoading(false)
     }

@@ -1,5 +1,7 @@
-import React, { useState } from 'react'
+import React, { useState, useContext } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import api from '../API/axios'
+import { AuthContext } from '../context/AuthContext'
 import './Login.css'   // reutilizamos los mismos estilos base
 
 // Calcula la edad a partir de una fecha de nacimiento en formato YYYY-MM-DD
@@ -15,6 +17,7 @@ function calcularEdad(fechaNac) {
 
 function Register() {
   const navigate = useNavigate()
+  const { login } = useContext(AuthContext)
 
   const [form, setForm] = useState({
     username:         '',
@@ -23,28 +26,15 @@ function Register() {
     confirmPassword:  '',
     fecha_nacimiento: '',
     sexo:             '',
-    foto_perfil:      null,      // objeto File
   })
 
-  // Vista previa de la foto antes de subir
-  const [preview, setPreview] = useState(null)
-  const [errors,  setErrors]  = useState({})
+  const [errors, setErrors] = useState({})
   const [loading, setLoading] = useState(false)
 
   const handleChange = (e) => {
     const { name, value } = e.target
     setForm(prev => ({ ...prev, [name]: value }))
     if (errors[name]) setErrors(prev => ({ ...prev, [name]: null }))
-  }
-
-  // Manejo especial para el input de tipo file
-  const handleFile = (e) => {
-    const file = e.target.files[0]
-    if (!file) return
-    setForm(prev => ({ ...prev, foto_perfil: file }))
-    // Genera una URL temporal para mostrar la preview en el navegador
-    setPreview(URL.createObjectURL(file))
-    if (errors.foto_perfil) setErrors(prev => ({ ...prev, foto_perfil: null }))
   }
 
   const validate = () => {
@@ -67,8 +57,6 @@ function Register() {
 
     if (!form.sexo)                  e.sexo      = 'Seleccioná una opción.'
 
-    if (!form.foto_perfil)           e.foto_perfil = 'Agregá una foto de perfil.'
-
     return e
   }
 
@@ -82,32 +70,36 @@ function Register() {
 
     setLoading(true)
     try {
-      // ── TODO: reemplazar con el endpoint real de FastAPI ──────────
-      // La foto se sube con FormData porque es un archivo binario.
-      // FastAPI recibe esto con:  foto_perfil: UploadFile = File(...)
-      //
-      // const formData = new FormData()
-      // formData.append('username',         form.username)
-      // formData.append('email',            form.email)
-      // formData.append('password',         form.password)
-      // formData.append('fecha_nacimiento', form.fecha_nacimiento)
-      // formData.append('sexo',             form.sexo)
-      // formData.append('foto_perfil',      form.foto_perfil)
-      //
-      // const res  = await fetch('http://localhost:8000/auth/register', {
-      //   method: 'POST',
-      //   body: formData,   // NO pongas Content-Type: el browser lo pone solo con el boundary
-      // })
-      // const data = await res.json()
-      // if (!res.ok) throw new Error(data.detail || 'Error al registrarse')
-      // ─────────────────────────────────────────────────────────────
+      // 1. Registrarse
+      await api.post('/usuarios/registro', {
+        email: form.email,
+        nombre_usuario: form.username,
+        contrasena: form.password,
+        fecha_nacimiento: form.fecha_nacimiento,
+        sexo: form.sexo,
+        bio: '',
+        etiquetas_interes: [],
+      })
 
-      // Mock temporal
-      await new Promise(r => setTimeout(r, 1200))
-      navigate('/login')   // después de registrarse, mandamos al login
+      // 2. Login automático con esas credenciales
+      const loginRes = await api.post('/login', new URLSearchParams({
+        username: form.email,
+        password: form.password,
+      }))
+
+      const loginData = loginRes.data
+      if (!loginData.access_token || !loginData.usuario) {
+        throw new Error('Error en respuesta de login')
+      }
+
+      // 3. Guardar sesión en contexto
+      login(loginData.access_token, loginData.usuario)
+
+      // 4. Redirigir a subir foto
+      navigate('/upload-photo')
 
     } catch (err) {
-      setErrors({ general: err.message })
+      setErrors({ general: err.response?.data?.detail || err.message })
     } finally {
       setLoading(false)
     }
@@ -137,46 +129,6 @@ function Register() {
               {errors.general}
             </p>
           )}
-
-          {/* Foto de perfil — va primero para que sea lo más visual */}
-          <div className='field' style={{ alignItems: 'center' }}>
-            <label htmlFor='foto_perfil'>Foto de perfil</label>
-
-            {/* Si hay preview mostramos la imagen, si no un placeholder */}
-            <div
-              style={{
-                width: 90, height: 90,
-                borderRadius: '50%',
-                background: 'var(--color-bg)',
-                border: `2px dashed ${errors.foto_perfil ? 'rgba(240,153,123,0.7)' : 'var(--color-border-md)'}`,
-                overflow: 'hidden',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                cursor: 'pointer',
-                transition: 'border-color 0.15s',
-              }}
-              onClick={() => document.getElementById('foto_perfil').click()}
-            >
-              {preview
-                ? <img src={preview} alt='preview' style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                : <span style={{ fontSize: 28 }}>📷</span>
-              }
-            </div>
-
-            {/* Input oculto — se activa al hacer clic en el círculo de arriba */}
-            <input
-              id='foto_perfil'
-              name='foto_perfil'
-              type='file'
-              accept='image/*'
-              style={{ display: 'none' }}
-              onChange={handleFile}
-            />
-
-            <span style={{ fontSize: 11, color: 'var(--color-text-muted)' }}>
-              Tocá para elegir una imagen
-            </span>
-            {errors.foto_perfil && <span className='field-error'>{errors.foto_perfil}</span>}
-          </div>
 
           {/* Nombre de usuario */}
           <div className='field'>

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from redis.asyncio import Redis as AsyncRedis
-from app.models.relational import UsuarioORM
+from app.models.relational import UsuarioORM, PhotoORM, UsuarioConFotoResponse
 from app.config import get_settings
 from app.services.rate_limiter import RateLimiterLoginRedis
 import logging
@@ -104,7 +104,15 @@ async def login(
     await rate_limiter.registrar_intento_exitoso(email)
     logger.info(f"Login exitoso: {email}")
     
-    # PASO 5: Generar token JWT
+    # PASO 5: Obtener la primera foto del usuario (foto de perfil)
+    from app.models.relational import PhotoORM
+    primera_foto = db.query(PhotoORM).filter(
+        PhotoORM.user_id == usuario.usuario_id
+    ).order_by(PhotoORM.fecha_subida).first()
+    
+    foto_perfil_url = primera_foto.url_imagen if primera_foto else None
+    
+    # PASO 6: Generar token JWT
     expiracion_token = timedelta(minutes=MINUTOS_EXPIRACION_TOKEN)
     datos_token = {"sub": usuario.email, "usuario_id": usuario.usuario_id}
     access_token = crear_token_acceso(data=datos_token, expires_delta=expiracion_token)
@@ -116,6 +124,8 @@ async def login(
             "usuario_id": usuario.usuario_id,
             "email": usuario.email,
             "nombre_usuario": usuario.nombre_usuario,
+            "bio": usuario.bio,
+            "foto_perfil_url": foto_perfil_url,
             "rol": "usuario"
         }
     }
@@ -147,3 +157,29 @@ async def obtener_usuario_actual(
         raise credentials_exception
     
     return user
+
+
+@router.get("/me", response_model=UsuarioConFotoResponse)
+async def obtener_mi_usuario(
+    actual: UsuarioORM = Depends(obtener_usuario_actual),
+    db: Session = Depends(lambda: __import__('app.main', fromlist=['get_db']).get_db().__next__())
+):
+    """Retorna los datos del usuario actual incluyendo su foto de perfil (primera foto subida)."""
+    
+    # Obtener la primera foto del usuario (ordenada por fecha_subida)
+    primera_foto = db.query(PhotoORM).filter(
+        PhotoORM.user_id == actual.usuario_id
+    ).order_by(PhotoORM.fecha_subida).first()
+    
+    foto_perfil_url = primera_foto.url_imagen if primera_foto else None
+    
+    return {
+        "usuario_id": actual.usuario_id,
+        "email": actual.email,
+        "nombre_usuario": actual.nombre_usuario,
+        "bio": actual.bio,
+        "fecha_creacion": actual.fecha_creacion,
+        "activo": actual.activo,
+        "foto_perfil_url": foto_perfil_url,
+        "rol": "usuario",
+    }

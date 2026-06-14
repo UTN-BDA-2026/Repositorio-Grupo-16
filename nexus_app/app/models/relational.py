@@ -45,7 +45,26 @@ class UsuarioORM(Base):
         return f"<UsuarioORM(usuario_id={self.usuario_id}, email='{self.email}', nombre_usuario='{self.nombre_usuario}')>"
 
 
-# ============ Modelos Pydantic para API (Validación de entrada/salida) ============
+class PhotoORM(Base):
+    """
+    Modelo ORM de SQLAlchemy para la tabla 'photos' en PostgreSQL.
+    Cada foto pertenece a un usuario y es auditable por fecha_subida.
+    """
+    __tablename__ = "photos"
+
+    # Columnas primarias
+    photo_id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, nullable=False, index=True)  # FK a usuarios
+    url_imagen = Column(String(500), nullable=False)
+    descripcion = Column(Text, nullable=True)
+    fecha_subida = Column(DateTime, default=datetime.utcnow, nullable=False)
+    
+    __table_args__ = (
+        Index('idx_photos_user_id_fecha', 'user_id', 'fecha_subida'),  # Para obtener primera foto ordenada
+    )
+
+    def __repr__(self):
+        return f"<PhotoORM(photo_id={self.photo_id}, user_id={self.user_id}, url_imagen='{self.url_imagen}')>"
 
 class RegistroUsuarioRequest(BaseModel):
     """
@@ -99,6 +118,47 @@ class UsuarioResponse(BaseModel):
     bio: Optional[str]
     fecha_creacion: datetime
     activo: bool
+
+    class Config:
+        from_attributes = True
+
+
+class FotoRequest(BaseModel):
+    """Esquema para subir una foto (aceptar URL)."""
+    url_imagen: str
+    descripcion: Optional[str] = None
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "url_imagen": "https://imgur.com/abc123.jpg",
+                "descripcion": "Mi foto de perfil"
+            }
+        }
+
+
+class FotoResponse(BaseModel):
+    """Esquema de respuesta de una foto."""
+    photo_id: int
+    user_id: int
+    url_imagen: str
+    descripcion: Optional[str]
+    fecha_subida: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class UsuarioConFotoResponse(BaseModel):
+    """Respuesta de usuario con foto de perfil (primera foto)."""
+    usuario_id: int
+    email: str
+    nombre_usuario: str
+    bio: Optional[str]
+    fecha_creacion: datetime
+    activo: bool
+    foto_perfil_url: Optional[str] = None
+    rol: str = "usuario"
 
     class Config:
         from_attributes = True

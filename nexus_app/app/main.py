@@ -13,7 +13,7 @@ from neo4j import GraphDatabase, Session as Neo4jSession
 from neo4j.exceptions import Neo4jError
 
 from app.config import get_settings, Settings
-from app.models.relational import Base, UsuarioORM, RegistroUsuarioRequest, RegistroUsuarioResponse
+from app.models.relational import Base, UsuarioORM, PhotoORM, RegistroUsuarioRequest, RegistroUsuarioResponse, FotoRequest, FotoResponse
 from app.models.graph import ManejadorBaseDatosGrafo
 
 # ============ CONFIGURACIÓN INICIAL ============
@@ -549,6 +549,121 @@ async def agregar_multiples_etiquetas(
         raise HTTPException(
             status_code=500,
             detail=f"Error al agregar etiquetas: {str(e)}"
+        )
+
+
+# ============ ENDPOINTS DE FOTOS ============
+
+@app.post("/usuarios/{usuario_id}/fotos", response_model=FotoResponse, status_code=201)
+async def subir_foto(
+    usuario_id: int,
+    foto_request: FotoRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Sube una foto para un usuario.
+    La primera foto subida se usa como foto de perfil.
+    Máximo 6 fotos por usuario (validado por trigger en BD).
+    
+    Request:
+        {
+            "url_imagen": "https://imgur.com/photo.jpg",
+            "descripcion": "Mi foto de perfil"
+        }
+    """
+    logger.info(f"Subiendo foto para usuario {usuario_id}")
+    
+    try:
+        # Verificar que el usuario existe
+        usuario = db.query(UsuarioORM).filter(
+            UsuarioORM.usuario_id == usuario_id
+        ).first()
+        
+        if not usuario:
+            logger.warning(f"Usuario {usuario_id} no existe")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Usuario {usuario_id} no encontrado"
+            )
+        
+        # Crear foto
+        nueva_foto = PhotoORM(
+            user_id=usuario_id,
+            url_imagen=foto_request.url_imagen,
+            descripcion=foto_request.descripcion
+        )
+        
+        db.add(nueva_foto)
+        db.commit()
+        db.refresh(nueva_foto)
+        
+        logger.info(f"✓ Foto {nueva_foto.photo_id} subida exitosamente para usuario {usuario_id}")
+        
+        return nueva_foto
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Error al subir foto: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al subir foto: {str(e)}"
+        )
+
+
+@app.get("/usuarios/{usuario_id}/fotos", response_model=dict)
+async def listar_fotos(
+    usuario_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    Lista todas las fotos de un usuario, ordenadas por fecha de subida (la primera es la foto de perfil).
+    """
+    logger.info(f"Listando fotos para usuario {usuario_id}")
+    
+    try:
+        # Verificar que el usuario existe
+        usuario = db.query(UsuarioORM).filter(
+            UsuarioORM.usuario_id == usuario_id
+        ).first()
+        
+        if not usuario:
+            logger.warning(f"Usuario {usuario_id} no existe")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Usuario {usuario_id} no encontrado"
+            )
+        
+        # Obtener fotos ordenadas por fecha (la primera es la más antigua = foto de perfil)
+        fotos = db.query(PhotoORM).filter(
+            PhotoORM.user_id == usuario_id
+        ).order_by(PhotoORM.fecha_subida).all()
+        
+        logger.info(f"✓ {len(fotos)} fotos encontradas para usuario {usuario_id}")
+        
+        return {
+            "usuario_id": usuario_id,
+            "fotos": [
+                {
+                    "photo_id": f.photo_id,
+                    "url_imagen": f.url_imagen,
+                    "descripcion": f.descripcion,
+                    "fecha_subida": f.fecha_subida,
+                    "es_foto_perfil": idx == 0  # La primera es la foto de perfil
+                }
+                for idx, f in enumerate(fotos)
+            ],
+            "total": len(fotos)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error al listar fotos: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error al listar fotos: {str(e)}"
         )
 
 
