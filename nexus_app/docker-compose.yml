@@ -64,6 +64,7 @@ services:
       FASTAPI_HOST: ${FASTAPI_HOST}
       FASTAPI_PORT: ${FASTAPI_PORT}
       ENVIRONMENT: ${ENVIRONMENT}
+      API_DB_USER: ${API_DB_USER}
     #ports:
     #  - "${FASTAPI_PORT}:${FASTAPI_PORT}"
     depends_on:

@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     postgres_host: str = "localhost"
     postgres_port: int = 5432
     postgres_db: str = "nexus_db"
-    postgres_user: str = "postgres"
-    postgres_password: str
+    api_db_user: str = "nexus_app_user"
+    api_db_password: str
     
     # Pool de conexiones SQLAlchemy
     sqlalchemy_pool_size: int = 5
@@ -59,22 +59,20 @@ class Settings(BaseSettings):
     def __init__(self, **data):
         super().__init__(**data)
         # Validaciones críticas
-        if not self.postgres_password:
-            raise ValueError("POSTGRES_PASSWORD es obligatorio en .env")
+        if not self.api_db_password:
+            raise ValueError("API_DB_PASSWORD es obligatorio en .env")
         if not self.neo4j_password:
             raise ValueError("NEO4J_PASSWORD es obligatorio en .env")
 
     @property
     def postgres_url_sqlalchemy(self) -> str:
         """
-        Construir cadena de conexión de PostgreSQL con parámetros de seguridad.
-        En producción, agregar: sslmode=require
+        Construir cadena de conexión con usuario de aplicación (permisos restringidos).
         """
         base_url = (
-            f"postgresql+psycopg2://{self.postgres_user}:{self.postgres_password}@"
+            f"postgresql+psycopg2://{self.api_db_user}:{self.api_db_password}@"
             f"{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
-        # En ambiente real, agregar parámetros de seguridad
         if self.environment == "production":
             base_url += "?sslmode=require"
         return base_url
