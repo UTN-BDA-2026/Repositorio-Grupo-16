@@ -264,12 +264,7 @@ INSERT INTO roles (nombre, descripcion) VALUES
 
 -- ============================================================
 -- MODIFICACIÓN: tabla users
-<<<<<<< HEAD
 -- La columna rol_id con valor por defecto 'usuario'
-=======
--- Se agrega la columna rol_id con valor por defecto 'usuario'
--- (rol_id = 1 según el INSERT anterior).
->>>>>>> b54d424109ac4051134cf8276cd2bea11876bcd0
 -- ============================================================
 ALTER TABLE users
     ADD COLUMN rol_id INT NOT NULL DEFAULT 1
@@ -277,3 +272,6 @@ ALTER TABLE users
 -- ON DELETE RESTRICT: no permite borrar un rol que tenga usuarios asignados
 -- Índice para consultas por rol (ej: "traer todos los administradores")
 CREATE INDEX idx_users_rol ON users(rol_id);
+
+ALTER TABLE users
+    ADD COLUMN fecha_nacimiento DATE;
