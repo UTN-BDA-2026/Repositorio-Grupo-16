@@ -236,8 +236,14 @@ SELECT * FROM logs_conexiones
 WHERE fecha_conexion BETWEEN '2023-06-01' AND '2023-08-31'
     AND tipo_evento = 'FALLIDA';
 
+<<<<<<< HEAD
     -- ============================================================
 -- TABLA: roles
+=======
+-- ============================================================
+--  AGREGADO DE ROLES (RBAC) - agregar al final de 01_schema.sql
+-- ============================================================
+>>>>>>> b54d424109ac4051134cf8276cd2bea11876bcd0
 -- Define los niveles de acceso jerárquicos de la aplicación.
 -- ============================================================
 CREATE TABLE roles (
@@ -246,7 +252,11 @@ CREATE TABLE roles (
     descripcion TEXT
 );
 
+<<<<<<< HEAD
 
+=======
+-- Tres roles posibles
+>>>>>>> b54d424109ac4051134cf8276cd2bea11876bcd0
 INSERT INTO roles (nombre, descripcion) VALUES
 ('usuario',        'Acceso básico: ver perfiles, subir fotos y agregar intereses'),
 ('operador',       'Acceso intermedio: todo lo anterior más moderación de contenido'),
@@ -254,7 +264,12 @@ INSERT INTO roles (nombre, descripcion) VALUES
 
 -- ============================================================
 -- MODIFICACIÓN: tabla users
+<<<<<<< HEAD
 -- La columna rol_id con valor por defecto 'usuario'
+=======
+-- Se agrega la columna rol_id con valor por defecto 'usuario'
+-- (rol_id = 1 según el INSERT anterior).
+>>>>>>> b54d424109ac4051134cf8276cd2bea11876bcd0
 -- ============================================================
 ALTER TABLE users
     ADD COLUMN rol_id INT NOT NULL DEFAULT 1
