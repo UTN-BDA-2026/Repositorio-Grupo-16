@@ -1,5 +1,6 @@
 from typing import List, Dict, Any, Optional
 from app.models.graph import ManejadorBaseDatosGrafo
+from app.services.cache_redis import cache_redis, TTL_AMIGOS, TTL_INTERESES, TTL_ETIQUETAS, TTL_COLABORATIVO
 import logging
 
 logger = logging.getLogger(__name__)
@@ -7,12 +8,6 @@ logger = logging.getLogger(__name__)
 
 class ServicioRecomendaciones:    
     def __init__(self, manejador_grafo: ManejadorBaseDatosGrafo):
-        """
-         Se inicial el servicio de recomendaciones.
-        
-        Args:
-            manejador_grafo: Instancia de ManejadorBaseDatosGrafo
-        """
         self.manejador_grafo = manejador_grafo
     
     def obtener_amigos_de_amigos(
@@ -20,6 +15,15 @@ class ServicioRecomendaciones:
         usuario_id: str,
         limite: int = 10
     ) -> List[Dict[str, Any]]:
+        # ========== CACHÉ: Intentar obtener del caché primero ==========
+        resultado_cache = cache_redis.obtener_amigos_de_amigos(usuario_id)
+        if resultado_cache is not None:
+            logger.info(f"✓ CACHÉ HIT: Amigos de amigos para usuario {usuario_id}")
+            return resultado_cache
+        
+        # ========== SI NO ESTÁ EN CACHÉ: Ejecutar consulta Neo4j ==========
+        logger.info(f"✗ CACHÉ MISS: Ejecutando consulta Neo4j para usuario {usuario_id}")
+        
         consulta = """
         MATCH (u:Usuario {id: $usuario_id})-[:AMIGO_DE]->(amigo:Usuario)
         MATCH (amigo)-[:AMIGO_DE]->(amigo_de_amigo:Usuario)
@@ -39,7 +43,13 @@ class ServicioRecomendaciones:
             "limite": limite
         }
         
-        return self.manejador_grafo.ejecutar_consulta(consulta, params)
+        resultado = self.manejador_grafo.ejecutar_consulta(consulta, params)
+        
+        # ========== CACHÉ: Guardar resultado en Redis ==========
+        cache_redis.guardar_amigos_de_amigos(usuario_id, resultado)
+        logger.info(f"✓ Guardado en caché (TTL: {TTL_AMIGOS}s)")
+        
+        return resultado
     
     def obtener_usuarios_intereses_comunes(
         self,
@@ -47,6 +57,19 @@ class ServicioRecomendaciones:
         minimo_intereses_comunes: int = 1,
         limite: int = 10
     ) -> List[Dict[str, Any]]:
+        """Obtiene usuarios con intereses comunes.
+        
+        Con caché integrada (automática).
+        """
+        # ========== CACHÉ: Intentar obtener del caché primero ==========
+        resultado_cache = cache_redis.obtener_intereses_comunes(usuario_id)
+        if resultado_cache is not None:
+            logger.info(f"✓ CACHÉ HIT: Intereses comunes para usuario {usuario_id}")
+            return resultado_cache
+        
+        # ========== SI NO ESTÁ EN CACHÉ: Ejecutar consulta Neo4j ==========
+        logger.info(f"✗ CACHÉ MISS: Ejecutando consulta Neo4j para usuario {usuario_id}")
+        
         consulta = """
         MATCH (u:Usuario {id: $usuario_id})-[:INTERESADO_EN]->(etiqueta:Etiqueta)
         MATCH (otro:Usuario)-[:INTERESADO_EN]->(etiqueta)
@@ -68,13 +91,28 @@ class ServicioRecomendaciones:
             "limite": limite
         }
         
-        return self.manejador_grafo.ejecutar_consulta(consulta, params)
+        resultado = self.manejador_grafo.ejecutar_consulta(consulta, params)
+        
+        # ========== CACHÉ: Guardar resultado en Redis ==========
+        cache_redis.guardar_intereses_comunes(usuario_id, resultado)
+        logger.info(f"✓ Guardado en caché (TTL: {TTL_INTERESES}s)")
+        
+        return resultado
     
     def obtener_etiquetas_recomendadas(
         self,
         usuario_id: str,
         limite: int = 15
     ) -> List[Dict[str, Any]]:
+        # ========== CACHÉ: Intentar obtener del caché primero ==========
+        resultado_cache = cache_redis.obtener_etiquetas_recomendadas(usuario_id)
+        if resultado_cache is not None:
+            logger.info(f"✓ CACHÉ HIT: Etiquetas recomendadas para usuario {usuario_id}")
+            return resultado_cache
+        
+        # ========== SI NO ESTÁ EN CACHÉ: Ejecutar consulta Neo4j ==========
+        logger.info(f"✗ CACHÉ MISS: Ejecutando consulta Neo4j para usuario {usuario_id}")
+        
         consulta = """
         MATCH (u:Usuario {id: $usuario_id})-[:INTERESADO_EN]->(etiqueta:Etiqueta)
         MATCH (u)-[:AMIGO_DE|INTERESADO_EN*2..3]-(usuario_similar:Usuario)-[:INTERESADO_EN]->(etiqueta_recomendada:Etiqueta)
@@ -92,13 +130,28 @@ class ServicioRecomendaciones:
             "limite": limite
         }
         
-        return self.manejador_grafo.ejecutar_consulta(consulta, params)
+        resultado = self.manejador_grafo.ejecutar_consulta(consulta, params)
+        
+        # ========== CACHÉ: Guardar resultado en Redis ==========
+        cache_redis.guardar_etiquetas_recomendadas(usuario_id, resultado)
+        logger.info(f"✓ Guardado en caché (TTL: {TTL_ETIQUETAS}s)")
+        
+        return resultado
     
     def obtener_recomendaciones_filtrado_colaborativo(
         self,
         usuario_id: str,
         limite: int = 10
     ) -> List[Dict[str, Any]]:
+        # ========== CACHÉ: Intentar obtener del caché primero ==========
+        resultado_cache = cache_redis.obtener_colaborativo(usuario_id)
+        if resultado_cache is not None:
+            logger.info(f"✓ CACHÉ HIT: Colaborativo para usuario {usuario_id}")
+            return resultado_cache
+        
+        # ========== SI NO ESTÁ EN CACHÉ: Ejecutar consulta Neo4j ==========
+        logger.info(f"✗ CACHÉ MISS: Ejecutando consulta Neo4j para usuario {usuario_id}")
+        
         consulta = """
         MATCH (u:Usuario {id: $usuario_id})-[:INTERESADO_EN]->(etiqueta_compartida:Etiqueta)
         MATCH (usuario_similar:Usuario)-[:INTERESADO_EN]->(etiqueta_compartida)
@@ -119,7 +172,13 @@ class ServicioRecomendaciones:
             "limite": limite
         }
         
-        return self.manejador_grafo.ejecutar_consulta(consulta, params)
+        resultado = self.manejador_grafo.ejecutar_consulta(consulta, params)
+        
+        # ========== CACHÉ: Guardar resultado en Redis ==========
+        cache_redis.guardar_colaborativo(usuario_id, resultado)
+        logger.info(f"✓ Guardado en caché (TTL: {TTL_COLABORATIVO}s)")
+        
+        return resultado
     
     def obtener_estadisticas_red(self, usuario_id: str) -> Dict[str, Any]:
         consulta = """
@@ -145,6 +204,7 @@ class ServicioRecomendaciones:
         usuario_id: str,
         etiquetas: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
+
         logger.info(f"Iniciando operación transaccional: {len(etiquetas)} etiquetas para usuario {usuario_id}")
         
         resultado = self.manejador_grafo.crear_multiples_relaciones_etiquetas_transaccional(
@@ -157,9 +217,16 @@ class ServicioRecomendaciones:
                 f"Éxito: {resultado['etiquetas_creadas']} etiquetas agregadas "
                 f"para usuario {usuario_id}"
             )
+            
+            # ========== CACHÉ: Invalidar caché del usuario ==========
+            logger.info(f"🗑️ Invalidando caché para usuario {usuario_id}")
+            cache_redis.invalidar_usuario(usuario_id)
+            resultado['cache_invalidada'] = True
+            logger.info(f"✓ Caché invalidada - próximas recomendaciones serán recalculadas")
         else:
             logger.warning(
                 f"Fallo en transacción para usuario {usuario_id}: {resultado['error']}"
             )
+            resultado['cache_invalidada'] = False
         
         return resultado

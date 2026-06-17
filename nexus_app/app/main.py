@@ -16,6 +16,10 @@ from app.config import get_settings, Settings
 from app.models.relational import Base, UsuarioORM, PhotoORM, RegistroUsuarioRequest, RegistroUsuarioResponse, FotoRequest, FotoResponse
 from app.models.graph import ManejadorBaseDatosGrafo
 
+# ============ IMPORTACIONES DE SERVICIOS ============
+from app.services.recommendation import ServicioRecomendaciones
+from app.services.cache_redis import cache_redis
+
 # ============ CONFIGURACIÓN INICIAL ============
 
 settings = get_settings()
@@ -99,6 +103,10 @@ redis_client = redis.from_url(settings.redis_url, decode_responses=True)
 redis_async = AsyncRedis.from_url(settings.redis_url, decode_responses=True)
 
 logger.info("✓ Cliente Redis inicializado")
+
+# ============ INSTANCIA DEL SERVICIO DE RECOMENDACIONES ============
+servicio_recomendaciones = ServicioRecomendaciones(manejador_grafo)
+logger.info("✓ ServicioRecomendaciones inicializado")
 
 # ============ DEPENDENCIAS DE INYECCIÓN ============
 
@@ -465,27 +473,6 @@ async def listar_usuarios(limite: int = 20, offset: int = 0, db: Session = Depen
     }
 
 
-@app.post("/recomendaciones/{usuario_id}")
-async def obtener_recomendaciones(usuario_id: int, limite: int = 5):
-    """
-    Obtiene recomendaciones personalizadas usando el motor Neo4j.
-    """
-    logger.info(f"Obteniendo recomendaciones para usuario {usuario_id}")
-    
-    try:
-        from app.services.recommendation import obtener_recomendaciones
-        
-        recomendaciones = obtener_recomendaciones(usuario_id, limite)
-        return {
-            "usuario_id": usuario_id,
-            "recomendaciones": recomendaciones,
-            "cantidad": len(recomendaciones)
-        }
-    except Exception as e:
-        logger.error(f"Error al obtener recomendaciones: {e}")
-        raise HTTPException(status_code=500, detail="Error al obtener recomendaciones")
-
-
 @app.post("/usuarios/{usuario_id}/etiquetas/bulk")
 async def agregar_multiples_etiquetas(
     usuario_id: str,
@@ -514,13 +501,10 @@ async def agregar_multiples_etiquetas(
         
         logger.info(f"[1/3] Validación completada: {len(etiquetas)} etiquetas para procesar")
         
-        from app.services.recommendation import ServicioRecomendaciones
-        
-        servicio = ServicioRecomendaciones(manejador_grafo)
         logger.info(f"[2/3] ServicioRecomendaciones inicializado")
         
         logger.info(f"[3/3] Iniciando transacción ACID para agregar etiquetas...")
-        resultado = servicio.agregar_multiples_etiquetas_transaccional(
+        resultado = servicio_recomendaciones.agregar_multiples_etiquetas_transaccional(
             usuario_id=usuario_id,
             etiquetas=etiquetas
         )
@@ -539,7 +523,8 @@ async def agregar_multiples_etiquetas(
             "exitoso": True,
             "usuario_id": usuario_id,
             "etiquetas_agregadas": resultado['etiquetas_agregadas'],
-            "detalles": resultado['detalles']
+            "detalles": resultado['detalles'],
+            "cache_invalidada": resultado.get('cache_invalidada', False)
         }
         
     except HTTPException:
@@ -665,6 +650,161 @@ async def listar_fotos(
             status_code=500,
             detail=f"Error al listar fotos: {str(e)}"
         )
+
+
+# ============ ENDPOINTS DE RECOMENDACIONES (CON CACHÉ) ============
+
+@app.get("/api/v1/recomendaciones/todas/{usuario_id}")
+async def obtener_todas_las_recomendaciones(
+    usuario_id: str,
+    limite_por_tipo: int = 10,
+    db: Session = Depends(get_db)
+):
+    try:
+        logger.info(f"GET /api/v1/recomendaciones/todas/{usuario_id}")
+        resultado = servicio_recomendaciones.obtener_todas_las_recomendaciones(
+            usuario_id=usuario_id,
+            limite_por_tipo=limite_por_tipo
+        )
+        return resultado
+    except Exception as e:
+        logger.error(f"Error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/recomendaciones/amigos-de-amigos/{usuario_id}")
+async def obtener_amigos_de_amigos(
+    usuario_id: str,
+    limite: int = 10,
+    db: Session = Depends(get_db)
+):
+    try:
+        logger.info(f"GET /api/v1/recomendaciones/amigos-de-amigos/{usuario_id}")
+        resultados = servicio_recomendaciones.obtener_amigos_de_amigos(
+            usuario_id=usuario_id,
+            limite=limite
+        )
+        return {
+            "usuario_id": usuario_id,
+            "tipo": "amigos_de_amigos",
+            "resultados": resultados,
+            "cantidad": len(resultados)
+        }
+    except Exception as e:
+        logger.error(f"Error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/recomendaciones/intereses-comunes/{usuario_id}")
+async def obtener_intereses_comunes(
+    usuario_id: str,
+    limite: int = 10,
+    db: Session = Depends(get_db)
+):
+    try:
+        logger.info(f"GET /api/v1/recomendaciones/intereses-comunes/{usuario_id}")
+        resultados = servicio_recomendaciones.obtener_usuarios_intereses_comunes(
+            usuario_id=usuario_id,
+            limite=limite
+        )
+        return {
+            "usuario_id": usuario_id,
+            "tipo": "intereses_comunes",
+            "resultados": resultados,
+            "cantidad": len(resultados)
+        }
+    except Exception as e:
+        logger.error(f"Error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/recomendaciones/etiquetas-sugeridas/{usuario_id}")
+async def obtener_etiquetas_recomendadas(
+    usuario_id: str,
+    limite: int = 15,
+    db: Session = Depends(get_db)
+):
+    try:
+        logger.info(f"GET /api/v1/recomendaciones/etiquetas-sugeridas/{usuario_id}")
+        resultados = servicio_recomendaciones.obtener_etiquetas_recomendadas(
+            usuario_id=usuario_id,
+            limite=limite
+        )
+        return {
+            "usuario_id": usuario_id,
+            "tipo": "etiquetas_sugeridas",
+            "resultados": resultados,
+            "cantidad": len(resultados)
+        }
+    except Exception as e:
+        logger.error(f"Error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/recomendaciones/colaborativo/{usuario_id}")
+async def obtener_colaborativo(
+    usuario_id: str,
+    limite: int = 10,
+    db: Session = Depends(get_db)
+):
+    try:
+        logger.info(f"GET /api/v1/recomendaciones/colaborativo/{usuario_id}")
+        resultados = servicio_recomendaciones.obtener_recomendaciones_filtrado_colaborativo(
+            usuario_id=usuario_id,
+            limite=limite
+        )
+        return {
+            "usuario_id": usuario_id,
+            "tipo": "colaborativo",
+            "resultados": resultados,
+            "cantidad": len(resultados)
+        }
+    except Exception as e:
+        logger.error(f"Error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/recomendaciones/estadisticas/{usuario_id}")
+async def obtener_estadisticas(
+    usuario_id: str,
+    db: Session = Depends(get_db)
+):
+    try:
+        logger.info(f"GET /api/v1/recomendaciones/estadisticas/{usuario_id}")
+        stats = servicio_recomendaciones.obtener_estadisticas_red(usuario_id)
+        return {
+            "usuario_id": usuario_id,
+            "estadisticas": stats
+        }
+    except Exception as e:
+        logger.error(f"Error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/v1/recomendaciones/cache/usuario/{usuario_id}")
+async def limpiar_cache_usuario(usuario_id: str):
+    try:
+        logger.info(f"DELETE /api/v1/recomendaciones/cache/usuario/{usuario_id}")
+        cantidad = cache_redis.invalidar_usuario(usuario_id)
+        return {
+            "usuario_id": usuario_id,
+            "caché_limpiada": True,
+            "claves_eliminadas": cantidad
+        }
+    except Exception as e:
+        logger.error(f"Error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/v1/recomendaciones/cache/estadisticas")
+async def obtener_estadisticas_cache():
+    try:
+        logger.info(f"GET /api/v1/recomendaciones/cache/estadisticas")
+        stats = cache_redis.obtener_estadisticas_cache()
+        return stats
+    except Exception as e:
+        logger.error(f"Error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.exception_handler(Exception)
