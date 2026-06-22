@@ -1,19 +1,20 @@
-.PHONY: help up down logs build restart clean ps test lint shell-postgres backup restore
+.PHONY: help up down logs build restart clean ps test lint shell-postgres backup restore security-scan
 
 help:
 	@echo "Comandos de Gestión de Docker para Nexus"
 	@echo "========================================"
-	@echo "make up       - Inicia todos los servicios (PostgreSQL, Neo4j, FastAPI)"
-	@echo "make down     - Detiene todos los servicios"
-	@echo "make build    - Construye la imagen de FastAPI"
-	@echo "make restart  - Reinicia todos los servicios"
-	@echo "make logs     - Ver registros de todos los servicios"
-	@echo "make ps       - Mostrar contenedores en ejecución"
-	@echo "make clean    - Elimina todos los contenedores y volúmenes"
-	@echo "make test     - Ejecutar pruebas"
-	@echo "make lint     - Ejecutar linters"
-	@echo "make backup   - Genera respaldos de las bases de datos (PostgreSQL y Neo4j)"
-	@echo "make restore  - Restaura las bases de datos desde los respaldos"
+	@echo "make up            - Inicia todos los servicios (PostgreSQL, Neo4j, FastAPI)"
+	@echo "make down          - Detiene todos los servicios"
+	@echo "make build         - Construye la imagen de FastAPI"
+	@echo "make restart       - Reinicia todos los servicios"
+	@echo "make logs          - Ver registros de todos los servicios"
+	@echo "make ps            - Mostrar contenedores en ejecución"
+	@echo "make clean         - Elimina todos los contenedores y volúmenes"
+	@echo "make test          - Ejecutar pruebas"
+	@echo "make lint          - Ejecutar linters"
+	@echo "make backup        - Genera respaldos de las bases de datos (PostgreSQL y Neo4j)"
+	@echo "make restore       - Restaura las bases de datos desde los respaldos"
+	@echo "make security-scan - Ejecuta escaneo de seguridad con OWASP ZAP contra Traefik"
 
 up:
 	docker-compose up -d
@@ -48,7 +49,7 @@ lint:
 	docker-compose exec fastapi black . && docker-compose exec fastapi flake8 .
 
 shell-postgres:
-	docker-compose exec postgres psql -U postgres -d nexus_db
+	docker-compose exec postgres psql -U ${POSTGRES_USER} -d ${POSTGRES_DB}
 
 backup:
 	@echo "Generando backup de PostgreSQL..."
@@ -60,3 +61,16 @@ backup:
 restore:
 	@echo "ATENCIÓN: La restauración requerirá indicar qué archivo montar."
 	@echo "Estructura base preparada para la defensa."
+
+security-scan:
+	@echo "🔍 Iniciando escaneo de seguridad con OWASP ZAP..."
+	@mkdir -p ./db/reports
+	docker run --rm \
+		--network nexus_app_nexus_network \
+		-v "$$(pwd)/db/reports:/zap/wrk:rw" \
+		ghcr.io/zaproxy/zaproxy:stable \
+		zap-baseline.py \
+		-t http://traefik \
+		-r "zap_report_$$(date +%Y%m%d_%H%M%S).html" \
+		-I
+	@echo "✓ Reporte guardado en ./db/reports/"

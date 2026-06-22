@@ -3,26 +3,26 @@
 
 set -euo pipefail
 
+# Cargamos las variables del .env para que POSTGRES_USER y POSTGRES_DB
+# estén disponibles al correr desde el Makefile
+set -a
+source .env
+set +a
+
 BACKUP_DIR="./db/backups/postgres"
-WAL_ARCHIVE_DIR="./db/backups/wal_archive"
 FECHA=$(date +"%Y%m%d_%H%M%S")
 ARCHIVO_SALIDA="${BACKUP_DIR}/nexus_postgres_${FECHA}.dump"
 
-# Creamos las carpetas de destino automáticamente si no existen
 mkdir -p "${BACKUP_DIR}"
-mkdir -p "${WAL_ARCHIVE_DIR}"
 
 # ── 1. BACKUP LÓGICO BASE (pg_dump) ──────────────────────────────────────────
 echo "Iniciando volcado lógico de PostgreSQL..."
-# Usamos ${POSTGRES_USER} en lugar de 'postgres' hardcodeado
-# El superusuario del proyecto es nexus_user (definido en POSTGRES_USER)
 docker-compose exec -T postgres \
   pg_dump -U "${POSTGRES_USER}" -Fc "${POSTGRES_DB}" > "${ARCHIVO_SALIDA}"
 echo "✓ Backup lógico guardado en: ${ARCHIVO_SALIDA}"
 
-# ── 2. CHECKPOINT WAL (PITR) ──────────────────────────────────────────────────
-echo "Forzando checkpoint WAL para garantizar consistencia..."
-# pg_basebackup genera una copia base del cluster compatible con PITR
+# ── 2. BASE WAL PARA PITR (pg_basebackup) ────────────────────────────────────
+echo "Generando copia base WAL para PITR..."
 docker-compose exec -T postgres \
   pg_basebackup \
     -U "${POSTGRES_USER}" \
