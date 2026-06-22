@@ -1,17 +1,36 @@
 #!/bin/bash
-# Backup de PostgreSQL utilizando formato custom (-Fc)
+# Backup de PostgreSQL: lógico (pg_dump) + WAL continuo (PITR)
+
+set -euo pipefail
 
 BACKUP_DIR="./db/backups/postgres"
+WAL_ARCHIVE_DIR="./db/backups/wal_archive"
 FECHA=$(date +"%Y%m%d_%H%M%S")
 ARCHIVO_SALIDA="${BACKUP_DIR}/nexus_postgres_${FECHA}.dump"
 
-# Creamos la carpeta de destino automáticamente si no existe
-mkdir -p ${BACKUP_DIR}
+# Creamos las carpetas de destino automáticamente si no existen
+mkdir -p "${BACKUP_DIR}"
+mkdir -p "${WAL_ARCHIVE_DIR}"
 
-echo "Iniciando volcado de PostgreSQL..."
-# Ejecutamos pg_dump dentro del contenedor de Postgres
-# -T desactiva la asignación de terminal (necesario para redirigir el texto a un archivo)
-# -Fc indica el formato custom (optimizado y comprimido, como pidió el profesor)
-docker-compose exec -T postgres pg_dump -U postgres -Fc nexus_db > "${ARCHIVO_SALIDA}"
+# ── 1. BACKUP LÓGICO BASE (pg_dump) ──────────────────────────────────────────
+echo "Iniciando volcado lógico de PostgreSQL..."
+# Usamos ${POSTGRES_USER} en lugar de 'postgres' hardcodeado
+# El superusuario del proyecto es nexus_user (definido en POSTGRES_USER)
+docker-compose exec -T postgres \
+  pg_dump -U "${POSTGRES_USER}" -Fc "${POSTGRES_DB}" > "${ARCHIVO_SALIDA}"
+echo "✓ Backup lógico guardado en: ${ARCHIVO_SALIDA}"
 
-echo "✓ Backup relacional guardado exitosamente en: ${ARCHIVO_SALIDA}"
+# ── 2. CHECKPOINT WAL (PITR) ──────────────────────────────────────────────────
+echo "Forzando checkpoint WAL para garantizar consistencia..."
+# pg_basebackup genera una copia base del cluster compatible con PITR
+docker-compose exec -T postgres \
+  pg_basebackup \
+    -U "${POSTGRES_USER}" \
+    -D /var/lib/postgresql/data/pg_archive/basebackup_${FECHA} \
+    -Ft \
+    -z \
+    --checkpoint=fast
+echo "✓ Base WAL guardada en pg_archive/basebackup_${FECHA}"
+
+echo ""
+echo "✓ Proceso de backup completo (lógico + WAL/PITR) finalizado."
