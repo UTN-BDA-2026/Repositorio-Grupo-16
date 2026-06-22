@@ -63,14 +63,14 @@ restore:
 	@echo "Estructura base preparada para la defensa."
 
 security-scan:
-	@echo "🔍 Iniciando escaneo de seguridad con OWASP ZAP..."
+	@echo "Iniciando escaneo de seguridad con OWASP ZAP..."
 	@mkdir -p ./db/reports
 	docker run --rm \
 		--network nexus_app_nexus_network \
 		-v "$$(pwd)/db/reports:/zap/wrk:rw" \
 		ghcr.io/zaproxy/zaproxy:stable \
 		zap-baseline.py \
-		-t http://traefik \
+		-t http://fastapi:8000 \
 		-r "zap_report_$$(date +%Y%m%d_%H%M%S).html" \
 		-I
 	@echo "✓ Reporte guardado en ./db/reports/"
