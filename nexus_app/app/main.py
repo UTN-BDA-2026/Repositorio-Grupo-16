@@ -63,10 +63,6 @@ def receive_rollback(conn):
     logger.error("✗ TRANSACCIÓN REVERTIDA: ROLLBACK")
     logger.error("═══════════════════════════════════════════════════════════")
 
-
-# Crear tabla si no existe
-Base.metadata.create_all(bind=engine)
-
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 # ============ INICIALIZACIÓN DE NEO4J ============
