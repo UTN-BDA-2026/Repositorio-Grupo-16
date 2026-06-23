@@ -16,10 +16,10 @@ class UsuarioORM(Base):
     Requisito académico: Demuestra uso de índices (B-Tree en email),
     constraints, y timestamps de auditoría.
     """
-    __tablename__ = "usuarios"
+    __tablename__ = "users"
 
     # Columnas primarias
-    usuario_id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, primary_key=True, autoincrement=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
     nombre_usuario = Column(String(100), nullable=False)
     contrasena_hash = Column(String(255), nullable=False)
@@ -98,7 +98,7 @@ class RegistroUsuarioResponse(BaseModel):
     Esquema de respuesta para POST /usuarios/registro.
     Retorna los datos del usuario creado (sin contraseña).
     """
-    usuario_id: int
+    user_id: int
     email: str
     nombre_usuario: str
     bio: Optional[str]
@@ -112,7 +112,7 @@ class RegistroUsuarioResponse(BaseModel):
 
 class UsuarioResponse(BaseModel):
     """Esquema de respuesta general de usuario (sin datos sensibles)."""
-    usuario_id: int
+    user_id: int
     email: str
     nombre_usuario: str
     bio: Optional[str]
@@ -151,7 +151,7 @@ class FotoResponse(BaseModel):
 
 class UsuarioConFotoResponse(BaseModel):
     """Respuesta de usuario con foto de perfil (primera foto)."""
-    usuario_id: int
+    user_id: int
     email: str
     nombre_usuario: str
     bio: Optional[str]
