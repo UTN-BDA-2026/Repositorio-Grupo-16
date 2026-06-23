@@ -22,10 +22,11 @@ services:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 60s
     networks:
       - nexus_network
-
+ 
   neo4j:
     image: neo4j:5-community
     container_name: nexus-neo4j
@@ -48,7 +49,7 @@ services:
       retries: 10
     networks:
       - nexus_network
-
+ 
   fastapi:
     build:
       context: .
@@ -94,19 +95,20 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-
+      start_period: 30s
+ 
   traefik:
     image: traefik:v2.10
     container_name: nexus-traefik
     restart: always
     command:
-      - "--api.insecure=true"
+      - "--api.insecure=true" # Solo para desarrollo, cambiar en producción
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
     ports:
-      - "80:80"
-      - "8080:8080"
+      - "80:80" # Única entrada expuesta
+      - "8080:8080" # Dashboard de Traefik (solo desarrollo)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
@@ -114,7 +116,7 @@ services:
     depends_on:
       fastapi:
         condition: service_healthy
-
+ 
   redis:
     image: redis:7-alpine
     container_name: nexus-redis
@@ -134,12 +136,14 @@ services:
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
-
+ 
+# Volúmenes persistentes para las bases de datos
 volumes:
   postgres_data:
   neo4j_data:
   redis_data:
-
+ 
+# Red interna para comunicación entre servicios
 networks:
   nexus_network:
     driver: bridge
