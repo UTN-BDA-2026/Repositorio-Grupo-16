@@ -3,23 +3,41 @@ DROP TABLE IF EXISTS user_interests CASCADE;
 DROP TABLE IF EXISTS photos CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 DROP TABLE IF EXISTS categories CASCADE;
+DROP TABLE IF EXISTS roles CASCADE;
+
+-- TABLA: roles (debe crearse ANTES de users)
+-- Define los niveles de acceso jerárquicos de la aplicación.
+CREATE TABLE roles (
+    rol_id      SERIAL PRIMARY KEY,
+    nombre      VARCHAR(50) NOT NULL UNIQUE,  -- 'usuario', 'operador', 'administrador'
+    descripcion TEXT
+);
+
+-- Tres roles posibles
+INSERT INTO roles (nombre, descripcion) VALUES
+('usuario',        'Acceso básico: ver perfiles, subir fotos y agregar intereses'),
+('operador',       'Acceso intermedio: todo lo anterior más moderación de contenido'),
+('administrador',  'Acceso total: puede modificar datos de cualquier usuario');
 
 -- TABLA: users: Guarda los datos básicos del perfil de cada usuario.
 -- Los datos de relaciones (quién sigue a quién) van en Neo4j.
-
 CREATE TABLE users (
-    user_id       SERIAL PRIMARY KEY,               -- ID autoincremental, clave primaria
-    nombre        VARCHAR(100) NOT NULL,             -- Nombre completo, obligatorio
-    email         VARCHAR(255) NOT NULL UNIQUE,      -- Email único por usuario
-    contrasena_hash VARCHAR(255) NOT NULL,           -- NUNCA guardamos la contraseña en texto plano
-    bio           TEXT,                              -- Descripción opcional del perfil
-    fecha_registro TIMESTAMP NOT NULL DEFAULT NOW(), -- Se llena automáticamente al crear el registro
-    activo        BOOLEAN NOT NULL DEFAULT TRUE      -- Para "borrado lógico" (no eliminamos filas)
+    user_id            SERIAL PRIMARY KEY,               -- ID autoincremental, clave primaria
+    nombre             VARCHAR(100) NOT NULL,             -- Nombre completo, obligatorio
+    email              VARCHAR(255) NOT NULL UNIQUE,      -- Email único por usuario
+    contrasena_hash    VARCHAR(255) NOT NULL,             -- NUNCA guardamos la contraseña en texto plano
+    bio                TEXT,                              -- Descripción opcional del perfil
+    fecha_registro     TIMESTAMP NOT NULL DEFAULT NOW(),  -- Se llena automáticamente al crear el registro
+    activo             BOOLEAN NOT NULL DEFAULT TRUE,     -- Para "borrado lógico" (no eliminamos filas)
+    rol_id             INT NOT NULL DEFAULT 1 REFERENCES roles(rol_id) ON DELETE RESTRICT,
+    fecha_nacimiento   DATE
 );
+
+-- Índice para consultas por rol (ej: "traer todos los administradores")
+CREATE INDEX idx_users_rol ON users(rol_id);
 
 -- TABLA: categories: Diccionario maestro de intereses/etiquetas de la aplicación.
 -- Ejemplos: "Tecnología", "Música", "Fotografía", "Viajes"
-
 CREATE TABLE categories (
     category_id  SERIAL PRIMARY KEY,
     nombre       VARCHAR(100) NOT NULL UNIQUE,       -- El nombre de la categoría, sin duplicados
@@ -27,10 +45,8 @@ CREATE TABLE categories (
     icono        VARCHAR(50)                         -- Nombre del ícono (ej: "camera", "music")
 );
 
-
 -- TABLA: photos: Fotos subidas por los usuarios.
 -- Cada foto pertenece a un usuario (clave foránea user_id).
-
 CREATE TABLE photos (
     photo_id     SERIAL PRIMARY KEY,
     user_id      INT NOT NULL,                       -- Qué usuario subió la foto
@@ -45,7 +61,6 @@ CREATE TABLE photos (
 
 -- TABLA: user_interests: Tabla intermedia (N:M) que conecta usuarios con categorías.
 -- Un usuario puede tener muchos intereses. Una categoría puede interesarle a muchos usuarios.
-
 CREATE TABLE user_interests (
     user_id      INT NOT NULL,
     category_id  INT NOT NULL,
@@ -76,7 +91,6 @@ CREATE INDEX idx_ui_category_id ON user_interests(category_id);
 
 -- Buscar usuarios por email (login)
 CREATE INDEX idx_users_email ON users(email);
-
 
 -- ============================================================
 -- PARTICIONADO POR RANGO (Range Partitioning)
@@ -128,8 +142,7 @@ CREATE TABLE historial_actividad_2024_11 PARTITION OF historial_actividad FOR VA
 CREATE TABLE historial_actividad_2024_12 PARTITION OF historial_actividad FOR VALUES FROM ('2024-12-01') TO ('2025-01-01');
 
 -- Partición DEFAULT: captura fechas fuera de los rangos definidos
-CREATE TABLE historial_actividad_default  PARTITION OF historial_actividad DEFAULT;
-
+CREATE TABLE historial_actividad_default PARTITION OF historial_actividad DEFAULT;
 
 -- ============================================================
 -- TABLA: logs_conexiones Registra cada intento de conexión al sistema.
@@ -181,7 +194,6 @@ CREATE TABLE logs_conexiones_2024_12 PARTITION OF logs_conexiones FOR VALUES FRO
 -- Partición DEFAULT
 CREATE TABLE logs_conexiones_default PARTITION OF logs_conexiones DEFAULT;
 
-
 -- ============================================================
 -- VERIFICACIÓN: listar todas las particiones creadas
 -- ============================================================
@@ -195,7 +207,6 @@ JOIN pg_class parent ON pg_inherits.inhparent = parent.oid
 JOIN pg_class child  ON pg_inherits.inhrelid  = child.oid
 WHERE parent.relname IN ('historial_actividad', 'logs_conexiones')
 ORDER BY tabla_padre, child.relname;
-
 
 -- ============================================================
 -- DATOS DE PRUEBA
@@ -222,7 +233,6 @@ FROM historial_actividad ORDER BY fecha_actividad;
 SELECT tableoid::regclass AS particion_fisica, id, usuario_id, tipo_evento, fecha_conexion
 FROM logs_conexiones ORDER BY fecha_conexion;
 
-
 -- ============================================================
 -- DEMOSTRACIÓN DE PARTITION PRUNING: El motor accede solo a las particiones necesarias
 -- ============================================================
@@ -235,43 +245,3 @@ EXPLAIN (ANALYZE, BUFFERS)
 SELECT * FROM logs_conexiones
 WHERE fecha_conexion BETWEEN '2023-06-01' AND '2023-08-31'
     AND tipo_evento = 'FALLIDA';
-
-<<<<<<< HEAD
-    -- ============================================================
--- TABLA: roles
-=======
--- ============================================================
---  AGREGADO DE ROLES (RBAC) - agregar al final de 01_schema.sql
--- ============================================================
->>>>>>> b54d424109ac4051134cf8276cd2bea11876bcd0
--- Define los niveles de acceso jerárquicos de la aplicación.
--- ============================================================
-CREATE TABLE roles (
-    rol_id      SERIAL PRIMARY KEY,
-    nombre      VARCHAR(50) NOT NULL UNIQUE,  -- 'usuario', 'operador', 'administrador'
-    descripcion TEXT
-);
-
-<<<<<<< HEAD
-
-=======
--- Tres roles posibles
->>>>>>> b54d424109ac4051134cf8276cd2bea11876bcd0
-INSERT INTO roles (nombre, descripcion) VALUES
-('usuario',        'Acceso básico: ver perfiles, subir fotos y agregar intereses'),
-('operador',       'Acceso intermedio: todo lo anterior más moderación de contenido'),
-('administrador',  'Acceso total: puede modificar datos de cualquier usuario');
-
--- ============================================================
--- MODIFICACIÓN: tabla users
--- La columna rol_id con valor por defecto 'usuario'
--- ============================================================
-ALTER TABLE users
-    ADD COLUMN rol_id INT NOT NULL DEFAULT 1
-        REFERENCES roles(rol_id) ON DELETE RESTRICT;
--- ON DELETE RESTRICT: no permite borrar un rol que tenga usuarios asignados
--- Índice para consultas por rol (ej: "traer todos los administradores")
-CREATE INDEX idx_users_rol ON users(rol_id);
-
-ALTER TABLE users
-    ADD COLUMN fecha_nacimiento DATE;
