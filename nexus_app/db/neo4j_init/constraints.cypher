@@ -1,24 +1,33 @@
-// Create unique constraints on User nodes
-CREATE CONSTRAINT user_id_unique IF NOT EXISTS
-FOR (u:Usuario) REQUIRE u.id IS UNIQUE;
+// ============================================================
+// DOCUMENTACIÓN DE REFERENCIA — CONSTRAINTS NEO4J
+// ============================================================
+// NOTA: Este archivo NO se ejecuta automáticamente al iniciar.
+// Las constraints se aplican mediante ops/sync_neo4j.py o manualmente
+// desde Neo4j Browser (http://localhost:7474).
+//
+// Propiedades reales que usa la API (main.py):
+//   Nodo Usuario: { usuario_id, email, nombre_usuario, fecha_creacion }
+//   Nodo Etiqueta: { etiqueta_id }
+//
+// ATENCIÓN: sync_neo4j.py usa propiedades distintas ({ id } y { nombre })
+// heredadas de una versión anterior. Pendiente alinear con la API.
+// ============================================================
 
-CREATE CONSTRAINT user_email_unique IF NOT EXISTS
-FOR (u:Usuario) REQUIRE u.email IS UNIQUE;
+// --- CONSTRAINTS VIGENTES (alineadas con main.py) ---
 
-// Create unique constraint on Tag nodes
-CREATE CONSTRAINT tag_name_unique IF NOT EXISTS
-FOR (t:Etiqueta) REQUIRE t.nombre IS UNIQUE;
+// CREATE CONSTRAINT user_usuario_id_unique IF NOT EXISTS
+// FOR (u:Usuario) REQUIRE u.usuario_id IS UNIQUE;
 
-// Create indexes for better query performance
-CREATE INDEX user_email_index IF NOT EXISTS
-FOR (u:Usuario) ON (u.email);
+// CREATE CONSTRAINT user_email_unique IF NOT EXISTS
+// FOR (u:Usuario) REQUIRE u.email IS UNIQUE;
 
-CREATE INDEX user_created_at_index IF NOT EXISTS
-FOR (u:Usuario) ON (u.created_at);
+// CREATE CONSTRAINT etiqueta_id_unique IF NOT EXISTS
+// FOR (t:Etiqueta) REQUIRE t.etiqueta_id IS UNIQUE;
 
-CREATE INDEX tag_nombre_index IF NOT EXISTS
-FOR (t:Etiqueta) ON (t.nombre);
+// --- ÍNDICES DE RENDIMIENTO ---
 
-// Create composite indexes for common queries
-CREATE INDEX usuario_interes_index IF NOT EXISTS
-FOR ()-[r:INTERESADO_EN]->(t:Etiqueta) ON (r.created_at);
+// CREATE INDEX user_email_index IF NOT EXISTS
+// FOR (u:Usuario) ON (u.email);
+
+// CREATE INDEX user_fecha_creacion_index IF NOT EXISTS
+// FOR (u:Usuario) ON (u.fecha_creacion);
