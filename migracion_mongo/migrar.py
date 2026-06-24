@@ -10,8 +10,15 @@ Uso:       python migrar.py
 
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, date
 from pathlib import Path
+
+
+def _a_datetime(v):
+    """BSON no encodea datetime.date; lo convertimos a datetime (medianoche)."""
+    if isinstance(v, date) and not isinstance(v, datetime):
+        return datetime(v.year, v.month, v.day)
+    return v
 from dotenv import load_dotenv
 
 # Intenta cargar .env.mongo, pero no falla si tiene problemas de encoding
@@ -93,7 +100,7 @@ def leer_postgres(pg):
             u.email,
             u.contrasena_hash,
             u.bio,
-            u.fecha_registro,
+            u.fecha_creacion AS fecha_registro,
             u.activo,
             u.fecha_nacimiento,
             r.nombre        AS rol_nombre
@@ -191,7 +198,7 @@ def transformar(usuarios, fotos_por_usuario, intereses_por_usuario, categorias, 
             "contrasena_hash": u["contrasena_hash"],
             "bio":             u["bio"],
             "activo":          u["activo"],
-            "fecha_nacimiento": u["fecha_nacimiento"],
+            "fecha_nacimiento": _a_datetime(u["fecha_nacimiento"]),
             "fecha_registro":  u["fecha_registro"],
             "rol":             u["rol_nombre"] or "usuario",
             # Subdocumentos embebidos (antes eran tablas separadas en PG)
