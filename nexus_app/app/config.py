@@ -1,12 +1,19 @@
 import logging
-from typing import Optional
-from pydantic_settings import BaseSettings
+import os
+from typing import Optional, Tuple, Type
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource
+
+# Directorio estándar donde Docker monta los secrets (docker-compose / swarm).
+# Cada secret se expone como un archivo: /run/secrets/<nombre_del_secret>
+# El nombre del archivo debe coincidir con el nombre del campo de esta clase.
+DIRECTORIO_SECRETS = "/run/secrets"
 
 
 class Settings(BaseSettings):
     """
     Clase de configuración para la aplicación Nexus.
     Carga variables de entorno del archivo .env y las valida estrictamente.
+    Las contraseñas se leen desde Docker Secrets (/run/secrets) cuando existen.
     Incluye configuración avanzada para SQLAlchemy y Neo4j con logging de auditoría.
     """
 
@@ -16,7 +23,7 @@ class Settings(BaseSettings):
     postgres_db: str = "nexus_db"
     api_db_user: str = "nexus_app_user"
     api_db_password: str
-    
+
     # Pool de conexiones SQLAlchemy
     sqlalchemy_pool_size: int = 5
     sqlalchemy_max_overflow: int = 10
@@ -29,7 +36,7 @@ class Settings(BaseSettings):
     neo4j_user: str = "neo4j"
     neo4j_password: str
     neo4j_database: str = "neo4j"
-    
+
     # Timeout para transacciones Neo4j
     neo4j_connection_timeout: int = 30
     neo4j_command_timeout: int = 60
@@ -55,14 +62,48 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
         case_sensitive = False
+        # Lee secrets montados por Docker en /run/secrets/<nombre_campo>.
+        # Solo se activa si el directorio existe (en contenedor/producción),
+        # de modo que en local sin Docker sigue funcionando con el .env.
+        secrets_dir = DIRECTORIO_SECRETS if os.path.isdir(DIRECTORIO_SECRETS) else None
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: Type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> Tuple[PydanticBaseSettingsSource, ...]:
+        """
+        Prioridad de fuentes (de mayor a menor):
+          1. Argumentos pasados al instanciar (init)
+          2. Secrets de Docker (/run/secrets/...)  <-- contraseñas
+          3. Variables de entorno
+          4. Archivo .env
+        Así, si un secret existe, gana sobre el .env y las variables de entorno.
+        """
+        return (
+            init_settings,
+            file_secret_settings,
+            env_settings,
+            dotenv_settings,
+        )
 
     def __init__(self, **data):
         super().__init__(**data)
         # Validaciones críticas
         if not self.api_db_password:
-            raise ValueError("API_DB_PASSWORD es obligatorio en .env")
+            raise ValueError(
+                "api_db_password es obligatorio: definilo como secret en "
+                "/run/secrets/api_db_password o como API_DB_PASSWORD en .env"
+            )
         if not self.neo4j_password:
-            raise ValueError("NEO4J_PASSWORD es obligatorio en .env")
+            raise ValueError(
+                "neo4j_password es obligatorio: definilo como secret en "
+                "/run/secrets/neo4j_password o como NEO4J_PASSWORD en .env"
+            )
 
     @property
     def postgres_url_sqlalchemy(self) -> str:
@@ -106,7 +147,7 @@ class Settings(BaseSettings):
             "%(asctime)s - %(name)s - %(levelname)s - "
             "[%(filename)s:%(lineno)d] - %(message)s"
         )
-        
+
         # Configuración básica de logging
         logging.basicConfig(
             level=logging.DEBUG,
@@ -116,16 +157,16 @@ class Settings(BaseSettings):
                 logging.FileHandler("nexus_audit.log")  # Archivo de auditoría
             ]
         )
-        
+
         # Habilitar logs de SQLAlchemy (engine)
         logging.getLogger("sqlalchemy.engine").setLevel(logging.DEBUG)
-        
+
         # Habilitar logs de SQLAlchemy ORM
         logging.getLogger("sqlalchemy.orm").setLevel(logging.DEBUG)
-        
+
         # Habilitar logs de Neo4j driver
         logging.getLogger("neo4j").setLevel(logging.DEBUG)
-        
+
         return logging.getLogger(__name__)
 
 

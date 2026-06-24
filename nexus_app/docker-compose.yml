@@ -26,7 +26,7 @@ services:
       start_period: 60s
     networks:
       - nexus_network
- 
+
   neo4j:
     image: neo4j:5-community
     container_name: nexus-neo4j
@@ -34,8 +34,6 @@ services:
     environment:
       NEO4J_AUTH: ${NEO4J_USER}/${NEO4J_PASSWORD}
       NEO4J_ACCEPT_LICENSE_AGREEMENT: "yes"
-      NEO4J_USER: ${NEO4J_USER}
-      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
     ports:
       - "7474:7474"
       - "${NEO4J_PORT}:7687"
@@ -43,13 +41,13 @@ services:
       - neo4j_data:/var/lib/neo4j/data
       - ./db/neo4j_init:/var/lib/neo4j/import
     healthcheck:
-      test: ["CMD-SHELL", "cypher-shell -u $${NEO4J_USER} -p $${NEO4J_PASSWORD} 'RETURN 1' || exit 1"]
+      test: ["CMD-SHELL", "wget -O /dev/null -q http://localhost:7474 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
     networks:
       - nexus_network
- 
+
   fastapi:
     build:
       context: .
@@ -63,16 +61,21 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       NEO4J_HOST: neo4j
       NEO4J_PORT: ${NEO4J_PORT}
       NEO4J_USER: ${NEO4J_USER}
-      NEO4J_PASSWORD: ${NEO4J_PASSWORD}
       FASTAPI_HOST: ${FASTAPI_HOST}
       FASTAPI_PORT: ${FASTAPI_PORT}
       ENVIRONMENT: ${ENVIRONMENT}
       API_DB_USER: ${API_DB_USER}
       REDIS_HOST: redis
+    # Contraseñas inyectadas como secrets (montadas en /run/secrets/<nombre>).
+    # config.py las lee desde ahí en vez del .env.
+    secrets:
+      - api_db_password
+      - neo4j_password
+      - redis_password
+      - clave_secreta_jwt
     ports:
       - "${FASTAPI_PORT}:8000"
     depends_on:
@@ -96,7 +99,7 @@ services:
       timeout: 5s
       retries: 5
       start_period: 30s
- 
+
   traefik:
     image: traefik:v2.10
     container_name: nexus-traefik
@@ -116,7 +119,7 @@ services:
     depends_on:
       fastapi:
         condition: service_healthy
- 
+
   redis:
     image: redis:7-alpine
     container_name: nexus-redis
@@ -136,13 +139,26 @@ services:
     environment:
       REDIS_HOST: redis
       REDIS_PORT: 6379
- 
+
+# Secrets: las contraseñas se leen desde archivos en ./secrets/ y se montan
+# dentro del contenedor fastapi en /run/secrets/<nombre>.
+# IMPORTANTE: los archivos ./secrets/*.txt NO deben subirse al repositorio.
+secrets:
+  api_db_password:
+    file: ./secrets/api_db_password.txt
+  neo4j_password:
+    file: ./secrets/neo4j_password.txt
+  redis_password:
+    file: ./secrets/redis_password.txt
+  clave_secreta_jwt:
+    file: ./secrets/clave_secreta_jwt.txt
+
 # Volúmenes persistentes para las bases de datos
 volumes:
   postgres_data:
   neo4j_data:
   redis_data:
- 
+
 # Red interna para comunicación entre servicios
 networks:
   nexus_network:
