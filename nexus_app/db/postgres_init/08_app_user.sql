@@ -9,7 +9,7 @@ $$;
  
 GRANT USAGE ON SCHEMA public TO nexus_app_user;
  
-GRANT SELECT, INSERT, UPDATE ON TABLE
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE
     users, photos, categories, user_interests,
     historial_actividad, logs_conexiones, user_connections, roles
 TO nexus_app_user;
@@ -18,6 +18,13 @@ GRANT INSERT ON TABLE auditoria_emails, auditoria_admins TO nexus_app_user;
  
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO nexus_app_user;
  
+GRANT EXECUTE ON FUNCTION
+    pr_actualizar_interes_seguro(int, int, smallint),
+    pr_desactivar_cuenta_segura(int),
+    pr_crear_conexion_segura(int, int),
+    pr_actualizar_perfil_optimista(int, text, int)
+TO nexus_app_user;
+
 -- Permisos sobre tablas/secuencias/funciones FUTURAS
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
     GRANT SELECT, INSERT, UPDATE ON TABLES TO nexus_app_user;
