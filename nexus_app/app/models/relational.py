@@ -100,7 +100,7 @@ class RegistroUsuarioResponse(BaseModel):
     Esquema de respuesta para POST /usuarios/registro.
     Retorna los datos del usuario creado (sin contraseña).
     """
-    user_id: int
+    usuario_id: int
     email: str
     nombre_usuario: str
     bio: Optional[str]

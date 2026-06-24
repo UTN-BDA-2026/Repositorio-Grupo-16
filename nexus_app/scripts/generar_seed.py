@@ -17,7 +17,7 @@ TOTAL_USUARIOS = 20_000
 TOTAL_CATEGORIAS = 35  # Las que cargamos en el seed original
 
 # Hash bcrypt de "password123" — mismo para todos (es seed de prueba)
-HASH = '$2b$12$LQv3c1yqBWVHxkd0LHAkCOYz6TtxMaJobMEV.G3v8s5L4oBo6kS2i'
+HASH = '$2b$12$Xgb.BGVAefyQM9QzgbkpNeSc3ZT.l.Nsbic7YWPCwBokYyqyvUySq'
 
 # Bios de ejemplo para asignar aleatoriamente
 BIOS = [
