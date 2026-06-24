@@ -19,7 +19,9 @@ class UsuarioORM(Base):
     __tablename__ = "users"
 
     # Columnas primarias
-    user_id = Column(Integer, primary_key=True, autoincrement=True)
+    # El atributo se llama usuario_id (lo usa auth.py / main.py) pero mapea
+    # a la columna real "user_id" de la tabla users.
+    usuario_id = Column("user_id", Integer, primary_key=True, autoincrement=True)
     email = Column(String(255), unique=True, nullable=False, index=True)
     nombre_usuario = Column(String(100), nullable=False)
     contrasena_hash = Column(String(255), nullable=False)

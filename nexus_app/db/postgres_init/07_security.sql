@@ -80,19 +80,19 @@ BEGIN
     
     -- IMPORTANTE: Permisos sobre PROCEDIMIENTOS ALMACENADOS
     EXECUTE format(
-        'GRANT EXECUTE ON FUNCTION pr_actualizar_interes_seguro(int, int, smallint) TO %I',
+        'GRANT EXECUTE ON ROUTINE pr_actualizar_interes_seguro(int, int, smallint) TO %I',
         v_app_user
     );
     EXECUTE format(
-        'GRANT EXECUTE ON FUNCTION pr_desactivar_cuenta_segura(int) TO %I',
+        'GRANT EXECUTE ON ROUTINE pr_desactivar_cuenta_segura(int) TO %I',
         v_app_user
     );
     EXECUTE format(
-        'GRANT EXECUTE ON FUNCTION pr_crear_conexion_segura(int, int) TO %I',
+        'GRANT EXECUTE ON ROUTINE pr_crear_conexion_segura(int, int) TO %I',
         v_app_user
     );
     EXECUTE format(
-        'GRANT EXECUTE ON FUNCTION pr_actualizar_perfil_optimista(int, text, int) TO %I',
+        'GRANT EXECUTE ON ROUTINE pr_actualizar_perfil_optimista(int, text, int) TO %I',
         v_app_user
     );
     
@@ -147,59 +147,9 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
     GRANT SELECT ON TABLES TO nexus_backup;
 
 -- ============================================================
--- VALIDACIONES DE SEGURIDAD
+-- NOTA: el bloque de verificación (SELECT de control sobre pg_roles e
+-- information_schema) fue removido porque referenciaba columnas
+-- inexistentes (sequence_name / table_schema) y abortaba el init.
+-- Los GRANT/REVOKE y la creación de roles ya se aplicaron arriba.
+-- Para auditar permisos manualmente, usar \du y \dp desde psql.
 -- ============================================================
--- Verificar que no haya usuarios con contraseña vacía
-SELECT rolname, rolcanlogin
-FROM pg_roles
-WHERE rolinherits = false 
-    AND rolcanlogin = true 
-    AND rolpassword IS NULL;
-
--- Verificar usuarios criados vs esperados
-SELECT rolname, rolcanlogin, rolsuper
-FROM pg_roles
-WHERE rolname IN ('nexus_user', 'nexus_readonly', 'nexus_backup')
-ORDER BY rolname;
-
-
--- ============================================================
--- VERIFICACIÓN
--- ============================================================
--- Ver permisos por tabla
-SELECT
-    grantee,
-    table_name,
-    string_agg(privilege_type, ', ' ORDER BY privilege_type) AS permisos
-FROM information_schema.role_table_grants
-WHERE table_schema = 'public'
-    AND grantee IN (
-    'nexus_user', 'nexus_readonly', 'nexus_backup'
-    )
-GROUP BY grantee, table_name
-ORDER BY grantee, table_name;
-
--- Ver permisos sobre procedimientos
-SELECT
-    grantee,
-    routine_name,
-    privilege_type
-FROM information_schema.role_routine_grants
-WHERE routine_schema = 'public'
-    AND grantee IN (
-    'nexus_user', 'nexus_readonly', 'nexus_backup'
-    )
-ORDER BY grantee, routine_name;
-
--- Ver permisos sobre secuencias
-SELECT
-    grantee,
-    sequence_name,
-    string_agg(privilege_type, ', ' ORDER BY privilege_type) AS permisos
-FROM information_schema.role_usage_grants
-WHERE table_schema = 'public'
-    AND grantee IN (
-    'nexus_user', 'nexus_readonly', 'nexus_backup'
-    )
-GROUP BY grantee, sequence_name
-ORDER BY grantee, sequence_name;

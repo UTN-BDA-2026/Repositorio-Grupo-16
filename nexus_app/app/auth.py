@@ -9,6 +9,7 @@ from redis.asyncio import Redis as AsyncRedis
 from app.models.relational import UsuarioORM, PhotoORM, UsuarioConFotoResponse
 from app.config import get_settings
 from app.services.rate_limiter import RateLimiterLoginRedis
+from app.dependencies import get_db, get_redis 
 import logging
 
 logger = logging.getLogger(__name__)
@@ -48,8 +49,8 @@ def crear_token_acceso(data: dict, expires_delta: Optional[timedelta] = None) ->
 @router.post("/login")
 async def login(
     form_data: OAuth2PasswordRequestForm = Depends(),
-    db: Session = Depends(lambda: __import__('app.main', fromlist=['get_db']).get_db().__next__()),
-    redis: AsyncRedis = Depends(lambda: __import__('app.main', fromlist=['redis_async']).redis_async)
+    db: Session = Depends(get_db),
+    redis: AsyncRedis = Depends(get_redis)
 ):
     
     email = form_data.username
@@ -132,7 +133,7 @@ async def login(
 
 async def obtener_usuario_actual(
     token: str = Depends(esquema_oauth2),
-    db: Session = Depends(lambda: __import__('app.main', fromlist=['get_db']).get_db().__next__())
+    db: Session = Depends(get_db)
 ) -> UsuarioORM:
     """Intercepta la petición, valida el JWT y devuelve el usuario."""
     credentials_exception = HTTPException(
@@ -162,7 +163,7 @@ async def obtener_usuario_actual(
 @router.get("/me", response_model=UsuarioConFotoResponse)
 async def obtener_mi_usuario(
     actual: UsuarioORM = Depends(obtener_usuario_actual),
-    db: Session = Depends(lambda: __import__('app.main', fromlist=['get_db']).get_db().__next__())
+    db: Session = Depends(get_db)
 ):
     """Retorna los datos del usuario actual incluyendo su foto de perfil (primera foto subida)."""
     
