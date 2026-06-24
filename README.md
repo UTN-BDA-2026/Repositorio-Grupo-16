@@ -15,28 +15,89 @@ Autenticación JWT:
 
 La autenticación está implementada en `nexus_app/app/auth.py` y se integra con el resto del proyecto mediante `nexus_app/app/main.py`.
 
-## Configuración y arranque del proyecto
+## Arquitectura
 
-1. Entrar en el directorio de la app:
-   ```bash
-   cd nexus_app
-   ```
-2. Copiar el archivo de ejemplo de variables de entorno:
-   ```bash
-   cp .env.example .env
-   ```
-3. Crear el directorio `secrets` y los archivos que Docker monta como secrets:
-   ```bash
-   mkdir -p secrets
-   echo "tu_api_db_password" > secrets/api_db_password.txt
-   echo "tu_neo4j_password" > secrets/neo4j_password.txt
-   echo "tu_redis_password" > secrets/redis_password.txt
-   echo "tu_clave_secreta_jwt" > secrets/clave_secreta_jwt.txt
-   ```
-4. Limpiar todos los datos existentes y levantar el stack desde cero:
-   ```bash
-   
-   ``` `docker compose down -v` en vez de `make clean`.
+Nexus usa motores especializados : PostgreSQL gestiona la información relacional (perfiles de usuario, autenticación, galería de fotos y diccionario de categorías); Neo4j se encarga del grafo social y de los algoritmos de recomendación; Redis se utiliza para caché y para el control de intentos de login (rate limiter); Traefik actúa como la única puerta de entrada HTTP al sistema, exponiendo el API y el dashboard.
+
+## Cómo levantar el proyecto
+
+Sigue estos pasos exactos desde la raíz del repositorio para levantar el stack con Docker Compose.
+
+Requisitos previos:
+- Tener instalado Docker y Docker Compose.
+
+Pasos:
+
+1. Clonar el repositorio (si aún no lo hiciste) y situarte en la carpeta del proyecto:
+
+```bash
+git clone <url-del-repo>
+cd Repositorio-Grupo-16
+```
+
+2. Ir al directorio de la app:
+
+```bash
+cd nexus_app
+```
+
+3. Copiar el archivo de variables de entorno de ejemplo:
+
+Linux / macOS:
+```bash
+cp .env.example .env
+```
+
+PowerShell (Windows):
+```powershell
+Copy-Item .env.example .env
+```
+
+4. Crear la carpeta `secrets` y añadir los archivos que Docker monta como secrets. Reemplaza los valores entre comillas por las contraseñas reales que quieras usar.
+
+Linux / macOS:
+```bash
+mkdir -p secrets
+echo "tu_api_db_password" > secrets/api_db_password.txt
+echo "tu_neo4j_password" > secrets/neo4j_password.txt
+echo "tu_redis_password" > secrets/redis_password.txt
+echo "tu_clave_secreta_jwt" > secrets/clave_secreta_jwt.txt
+```
+
+PowerShell (Windows):
+```powershell
+New-Item -ItemType Directory -Path secrets -Force
+Set-Content -Path .\secrets\api_db_password.txt -Value "tu_api_db_password"
+Set-Content -Path .\secrets\neo4j_password.txt -Value "tu_neo4j_password"
+Set-Content -Path .\secrets\redis_password.txt -Value "tu_redis_password"
+Set-Content -Path .\secrets\clave_secreta_jwt.txt -Value "tu_clave_secreta_jwt"
+```
+
+5. Levantar el stack (desde `nexus_app`):
+
+```bash
+docker compose up -d --build
+```
+
+6. Verificar que los contenedores están arriba:
+
+```bash
+docker compose ps
+```
+
+7. Endpoints útiles:
+- API (servida a través de Traefik): http://localhost/
+- Traefik dashboard: http://localhost:8080
+- Neo4j Browser: http://localhost:7474
+- PostgreSQL: puerto configurado en `.env` (variable `POSTGRES_PORT`)
+
+8. Parar y eliminar contenedores y volúmenes (limpieza completa):
+
+```bash
+docker compose down -v
+```
+
+Si necesitas entrar en la base de datos PostgreSQL o revisar los scripts de inicialización, revisa `nexus_app/db/postgres_init`.
 
 ## Qué se validó
 
