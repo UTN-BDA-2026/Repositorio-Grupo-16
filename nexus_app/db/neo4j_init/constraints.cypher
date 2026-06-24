@@ -1,36 +1,33 @@
 // ============================================================
-// CONSTRAINTS E ÍNDICES NEO4J — NEXUS
-// Alineado con las propiedades reales que crea la API
-// Nodo Usuario: {usuario_id, email, nombre_usuario, fecha_creacion}
-// Nodo Etiqueta: {etiqueta_id}
+// DOCUMENTACIÓN DE REFERENCIA — CONSTRAINTS NEO4J
+// ============================================================
+// NOTA: Este archivo NO se ejecuta automáticamente al iniciar.
+// Las constraints se aplican mediante ops/sync_neo4j.py o manualmente
+// desde Neo4j Browser (http://localhost:7474).
+//
+// Propiedades reales que usa la API (main.py):
+//   Nodo Usuario: { usuario_id, email, nombre_usuario, fecha_creacion }
+//   Nodo Etiqueta: { etiqueta_id }
+//
+// ATENCIÓN: sync_neo4j.py usa propiedades distintas ({ id } y { nombre })
+// heredadas de una versión anterior. Pendiente alinear con la API.
 // ============================================================
 
-// --- CONSTRAINTS DE UNICIDAD ---
+// --- CONSTRAINTS VIGENTES (alineadas con main.py) ---
 
-// usuario_id es el identificador que viene de PostgreSQL
-CREATE CONSTRAINT user_usuario_id_unique IF NOT EXISTS
-FOR (u:Usuario) REQUIRE u.usuario_id IS UNIQUE;
+// CREATE CONSTRAINT user_usuario_id_unique IF NOT EXISTS
+// FOR (u:Usuario) REQUIRE u.usuario_id IS UNIQUE;
 
-// email también debe ser único en el grafo
-CREATE CONSTRAINT user_email_unique IF NOT EXISTS
-FOR (u:Usuario) REQUIRE u.email IS UNIQUE;
+// CREATE CONSTRAINT user_email_unique IF NOT EXISTS
+// FOR (u:Usuario) REQUIRE u.email IS UNIQUE;
 
-// etiqueta_id es la propiedad real con la que se hace MATCH al vincular
-CREATE CONSTRAINT etiqueta_id_unique IF NOT EXISTS
-FOR (t:Etiqueta) REQUIRE t.etiqueta_id IS UNIQUE;
+// CREATE CONSTRAINT etiqueta_id_unique IF NOT EXISTS
+// FOR (t:Etiqueta) REQUIRE t.etiqueta_id IS UNIQUE;
 
 // --- ÍNDICES DE RENDIMIENTO ---
 
-// Búsquedas por email (login, recomendaciones)
-CREATE INDEX user_email_index IF NOT EXISTS
-FOR (u:Usuario) ON (u.email);
+// CREATE INDEX user_email_index IF NOT EXISTS
+// FOR (u:Usuario) ON (u.email);
 
-// Búsquedas y ordenamiento por fecha de creación del usuario
-CREATE INDEX user_fecha_creacion_index IF NOT EXISTS
-FOR (u:Usuario) ON (u.fecha_creacion);
-
-// --- ÍNDICE COMPUESTO EN RELACIÓN ---
-
-// Ordenar/filtrar relaciones INTERESADO_EN por fecha
-CREATE INDEX usuario_interes_index IF NOT EXISTS
-FOR ()-[r:INTERESADO_EN]->(t:Etiqueta) ON (r.fecha_creacion);
+// CREATE INDEX user_fecha_creacion_index IF NOT EXISTS
+// FOR (u:Usuario) ON (u.fecha_creacion);
