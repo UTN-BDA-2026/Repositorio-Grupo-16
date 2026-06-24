@@ -111,7 +111,7 @@ services:
       - "--entrypoints.web.address=:80"
     ports:
       - "80:80" # Única entrada expuesta
-      - "8080:8080" # Dashboard de Traefik (solo desarrollo)
+      - "8081:8080" # Dashboard de Traefik (solo desarrollo)
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:

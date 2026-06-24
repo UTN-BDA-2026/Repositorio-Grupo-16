@@ -302,9 +302,10 @@ COMMENT ON INDEX idx_auditoria_emails_user_id IS
 -- CONSTRAINTS Y VALIDACIONES
 -- ============================================================
 
+ /*
 COMMENT ON CONSTRAINT ck_email_valido ON users IS
 '[CHECK] Valida que email contenga al menos un @. Formato básico RFC-5321 completo se valida en aplicación.';
-
+ */
 -- ============================================================
 -- VERIFICACIÓN FINAL: CONSULTA DE INTEGRIDAD
 -- ============================================================

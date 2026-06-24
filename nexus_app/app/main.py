@@ -807,7 +807,8 @@ async def obtener_estadisticas_cache():
 async def manejador_excepciones_global(request, exc):
     """Manejador global de excepciones no capturadas."""
     logger.error(f"Excepción no manejada: {exc}", exc_info=True)
-    return HTTPException(status_code=500, detail="Error interno del servidor")
+    from fastapi.responses import JSONResponse
+    return JSONResponse(status_code=500, content={"detail": "Error interno del servidor"})
 
 
 if __name__ == "__main__":

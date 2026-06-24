@@ -85,13 +85,22 @@ docker compose up -d --build
 docker compose ps
 ```
 
-7. Endpoints útiles:
+7. Cargar el grafo de Neo4j (necesario para las recomendaciones). Neo4j arranca vacío: este paso lee los datos de PostgreSQL (usuarios, intereses y categorías), construye los nodos y relaciones del grafo y genera las amistades. **Sin este paso, los endpoints de recomendación devuelven listas vacías.**
+
+```bash
+docker compose exec -e PYTHONPATH=/app fastapi python ops/sync_neo4j.py 150
+```
+
+El número final (`150`) es la cantidad de usuarios a volcar al grafo; usar `0` para cargarlos todos. El script es idempotente: se puede volver a ejecutar para resincronizar con los datos actuales de PostgreSQL.
+
+8. Endpoints útiles:
 - API (servida a través de Traefik): http://localhost/
-- Traefik dashboard: http://localhost:8080
+- API directa (FastAPI + Swagger): http://localhost:8000/docs
+- Traefik dashboard: http://localhost:8081
 - Neo4j Browser: http://localhost:7474
 - PostgreSQL: puerto configurado en `.env` (variable `POSTGRES_PORT`)
 
-8. Parar y eliminar contenedores y volúmenes (limpieza completa):
+9. Parar y eliminar contenedores y volúmenes (limpieza completa):
 
 ```bash
 docker compose down -v

@@ -9,6 +9,21 @@ logger = logging.getLogger(__name__)
 class ServicioRecomendaciones:    
     def __init__(self, manejador_grafo: ManejadorBaseDatosGrafo):
         self.manejador_grafo = manejador_grafo
+
+    def obtener_todas_las_recomendaciones(
+        self,
+        usuario_id: str,
+        limite_por_tipo: int = 10
+    ) -> Dict[str, Any]:
+        """Agrega todos los tipos de recomendación en una sola respuesta."""
+        return {
+            "usuario_id": usuario_id,
+            "amigos_de_amigos": self.obtener_amigos_de_amigos(usuario_id, limite_por_tipo),
+            "intereses_comunes": self.obtener_usuarios_intereses_comunes(usuario_id, limite_por_tipo),
+            "etiquetas_sugeridas": self.obtener_etiquetas_recomendadas(usuario_id, limite_por_tipo),
+            "colaborativo": self.obtener_recomendaciones_filtrado_colaborativo(usuario_id, limite_por_tipo),
+            "estadisticas": self.obtener_estadisticas_red(usuario_id),
+        }
     
     def obtener_amigos_de_amigos(
         self,

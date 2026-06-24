@@ -18,7 +18,7 @@ GRANT INSERT ON TABLE auditoria_emails, auditoria_admins TO nexus_app_user;
  
 GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO nexus_app_user;
  
-GRANT EXECUTE ON FUNCTION
+GRANT EXECUTE ON ROUTINE
     pr_actualizar_interes_seguro(int, int, smallint),
     pr_desactivar_cuenta_segura(int),
     pr_crear_conexion_segura(int, int),
