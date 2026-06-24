@@ -91,6 +91,7 @@ function Advanced() {
   const [estado, setEstado] = useState('cargando') // cargando | ok | vacio | error
   const [currentIndex, setCurrentIndex] = useState(-1)
   const [lastAction, setLastAction] = useState(null)
+  const [recsPerfil, setRecsPerfil] = useState([])
   const currentIndexRef = useRef(currentIndex)
 
   // Trae las recomendaciones reales al montar (o cuando hay usuario)
@@ -111,6 +112,16 @@ function Advanced() {
     }
     cargar()
   }, [user])
+
+  useEffect(() => {
+    const actual = db[currentIndex]
+    if (!actual) { setRecsPerfil([]); return }
+    let cancelado = false
+    api.get(`/api/v1/recomendaciones/amigos-de-amigos/${actual.id}`)
+      .then((res) => { if (!cancelado) setRecsPerfil((res.data?.resultados || []).slice(0, 4)) })
+      .catch(() => { if (!cancelado) setRecsPerfil([]) })
+    return () => { cancelado = true }
+  }, [currentIndex, db])
 
   const childRefs = useMemo(
     () => Array(db.length).fill(0).map(() => React.createRef()),
@@ -206,6 +217,33 @@ function Advanced() {
             <span className='stat-value accent'>{Math.max(currentIndex + 1, 0)}</span>
           </div>
         </div>
+
+        {db[currentIndex] && (
+          <div className='panel-card'>
+            <p className='panel-title'>🔗 conectá con más gente</p>
+            <p style={{ color: '#8a93a6', fontSize: 12, margin: '0 0 10px' }}>
+              Personas conectadas a <strong style={{ color: '#dfe4ee' }}>{db[currentIndex].username}</strong>
+            </p>
+            {recsPerfil.length === 0 ? (
+              <p style={{ color: '#8a93a6', fontSize: 12 }}>Buscando conexiones…</p>
+            ) : (
+              recsPerfil.map((r, i) => (
+                <div className='queue-item' key={r.usuario_id}>
+                  <div className='queue-avatar' style={{
+                    background: QUEUE_COLORS[i % QUEUE_COLORS.length].bg,
+                    color: QUEUE_COLORS[i % QUEUE_COLORS.length].text,
+                  }}>
+                    {getInitials(r.nombre_usuario || '?')}
+                  </div>
+                  <div className='queue-info'>
+                    <p className='queue-name'>{r.nombre_usuario}</p>
+                    <p className='queue-match'>{r.amigos_mutuos} amigos en común</p>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
 
         {queueProfiles.length > 0 && (
           <div className='panel-card'>
