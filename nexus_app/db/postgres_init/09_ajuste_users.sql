@@ -1,5 +1,4 @@
 -- ============================================================
--- Script: 09_ajuste_users.sql
 -- Propósito: Alinear tabla 'users' con modelo ORM UsuarioORM
 -- IMPORTANTE: ejecutar con: docker compose down -v && make up
 -- ============================================================
@@ -29,3 +28,5 @@ CREATE INDEX IF NOT EXISTS idx_users_fecha_creacion ON users(fecha_creacion);
 -- Agrega restricción de validación de email (requisito académico)
 ALTER TABLE users ADD CONSTRAINT ck_email_valido 
     CHECK (email LIKE '%@%') NOT VALID;
+
+ALTER TABLE users ALTER COLUMN nombre DROP NOT NULL;
