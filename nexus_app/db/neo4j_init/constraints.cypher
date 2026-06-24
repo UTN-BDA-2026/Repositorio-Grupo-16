@@ -1,24 +1,36 @@
-// Create unique constraints on User nodes
-CREATE CONSTRAINT user_id_unique IF NOT EXISTS
-FOR (u:Usuario) REQUIRE u.id IS UNIQUE;
+// ============================================================
+// CONSTRAINTS E ÍNDICES NEO4J — NEXUS
+// Alineado con las propiedades reales que crea la API
+// Nodo Usuario: {usuario_id, email, nombre_usuario, fecha_creacion}
+// Nodo Etiqueta: {etiqueta_id}
+// ============================================================
 
+// --- CONSTRAINTS DE UNICIDAD ---
+
+// usuario_id es el identificador que viene de PostgreSQL
+CREATE CONSTRAINT user_usuario_id_unique IF NOT EXISTS
+FOR (u:Usuario) REQUIRE u.usuario_id IS UNIQUE;
+
+// email también debe ser único en el grafo
 CREATE CONSTRAINT user_email_unique IF NOT EXISTS
 FOR (u:Usuario) REQUIRE u.email IS UNIQUE;
 
-// Create unique constraint on Tag nodes
-CREATE CONSTRAINT tag_name_unique IF NOT EXISTS
-FOR (t:Etiqueta) REQUIRE t.nombre IS UNIQUE;
+// etiqueta_id es la propiedad real con la que se hace MATCH al vincular
+CREATE CONSTRAINT etiqueta_id_unique IF NOT EXISTS
+FOR (t:Etiqueta) REQUIRE t.etiqueta_id IS UNIQUE;
 
-// Create indexes for better query performance
+// --- ÍNDICES DE RENDIMIENTO ---
+
+// Búsquedas por email (login, recomendaciones)
 CREATE INDEX user_email_index IF NOT EXISTS
 FOR (u:Usuario) ON (u.email);
 
-CREATE INDEX user_created_at_index IF NOT EXISTS
-FOR (u:Usuario) ON (u.created_at);
+// Búsquedas y ordenamiento por fecha de creación del usuario
+CREATE INDEX user_fecha_creacion_index IF NOT EXISTS
+FOR (u:Usuario) ON (u.fecha_creacion);
 
-CREATE INDEX tag_nombre_index IF NOT EXISTS
-FOR (t:Etiqueta) ON (t.nombre);
+// --- ÍNDICE COMPUESTO EN RELACIÓN ---
 
-// Create composite indexes for common queries
+// Ordenar/filtrar relaciones INTERESADO_EN por fecha
 CREATE INDEX usuario_interes_index IF NOT EXISTS
-FOR ()-[r:INTERESADO_EN]->(t:Etiqueta) ON (r.created_at);
+FOR ()-[r:INTERESADO_EN]->(t:Etiqueta) ON (r.fecha_creacion);
